@@ -1,0 +1,23 @@
+version: "3.9"
+services:
+  ui:
+    build: ./UI/dashboard
+    ports:
+      - "5173:5173"
+  user-svc:
+    build: ./Backend/user-svc
+    ports:
+      - "8080:8080"
+  lead-svc:
+    build: ./Backend/lead-svc
+    ports:
+      - "8081:8081"
+  campaign-svc:
+    build: ./Backend/campaign-svc
+    ports:
+      - "8082:8082"
+  ai-svc:
+    build: ./AI/ai-svc
+    ports:
+      - "8090:8090"
+
