@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: outreach-ui-deployment
+  labels:
+    app: outreach-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: outreach-ui
+  template:
+    metadata:
+      labels:
+        app: outreach-ui
+    spec:
+      containers:
+        - name: outreach-ui
+          image: outreach-ui:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
