@@ -1,0 +1,10 @@
+db = db.getSiblingDB('outreachdb');
+
+db.createCollection('settings');
+db.settings.insertMany([
+  { name: "initialized", value: true },
+  { name: "default_lead_score", value: 50 },
+  { name: "ai_model", value: "gpt-4o" }
+]);
+
+print("✅ Mongo initialized with settings collection");
