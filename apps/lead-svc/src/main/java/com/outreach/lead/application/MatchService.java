@@ -22,7 +22,12 @@ public class MatchService {
 
     // 2) DB listing/adding (admin/debug; UI won’t input names)
     public List<Prospect> listProspects(){ return prospects; }
-    public Prospect createProspect(Prospect in){ ... }
+    public Prospect createProspect(Prospect in){ // Changded to return the created Prospect
+    if(in == null) throw new IllegalArgumentException("Prospect cannot be null");
+    prospects.add(in);
+    return in;
+}
+
 
     // 3) Match using criteria (user never types names)
     public List<ScoredProspect> match(ProspectCriteria c, int limit){
