@@ -1,6 +1,14 @@
 // Exposes REST endpoints (/api/v1/...) so the frontend can talk to the backend
 package com.outreach.lead.api;
 
+import com.outreach.lead.application.MatchService;
+import com.outreach.lead.domain.Prospect;
+import com.outreach.lead.domain.ProspectCriteria;
+import com.outreach.lead.domain.SellerProfile;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import java.util.*;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.*;

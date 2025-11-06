@@ -1,23 +1,37 @@
-# ---- OS-specific files ----
+# ---- OS-specific ----
 .DS_Store
 Thumbs.db
 
 # ---- Node / React ----
 node_modules/
-build/
-dist/
+**/node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+# Next.js / React build artifacts
+build/
+dist/
+**/build/
+**/dist/
 
-# ---- Java / Spring Boot ----
+# ---- Java / Spring Boot / Gradle ----
 target/
+**/target/
 *.class
 *.jar
 *.war
 *.ear
 
-# ---- IDE and editor configs ----
+# Gradle build directories
+.gradle/
+**/.gradle/
+**/build/
+**/out/
+checksum.lock
+gc.properties
+
+# ---- IDE / Editor stuff ----
 .idea/
 *.iml
 *.ipr
@@ -25,10 +39,17 @@ target/
 .vscode/
 *.swp
 
-# ---- Environment variables ----
+# ---- Environment / Secrets ----
 .env
+.env.*.local
 *.local
+secrets/
+*.key
 
 # ---- Logs ----
-*.log
 logs/
+*.log
+**/*.log
+
+# ---- Docker ----
+*.pid
