@@ -1,0 +1,49 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '3.5.7'
+	id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.outreach'
+version = '0.0.1-SNAPSHOT'
+description = 'Campaign Service - Manages outreach campaigns and email automation'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+tasks.withType(JavaCompile) {
+    options.release = 17
+}
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+    // REST API + server
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+
+    // Request payload validation (@Valid, @NotBlank, etc.)
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    // Monitoring endpoints (/actuator/**)
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // Auto-reload in development (not packaged in prod jar)
+    developmentOnly 'org.springframework.boot:spring-boot-devtools'
+
+    // OpenAPI + Swagger UI at /swagger
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
+
+    // Testing (JUnit, MockMvc, etc.)
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}
+

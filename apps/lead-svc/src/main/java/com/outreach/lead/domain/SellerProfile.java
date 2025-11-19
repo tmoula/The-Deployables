@@ -1,12 +1,23 @@
-// The data model (record) representing a Lead (company, domain, email, etc.).
-
 package com.outreach.lead.domain;
 import java.util.List;
 
 public record SellerProfile(
-        String company,
+        // Company Basics
+        String companyName,
         String industry,
         Integer companySize,
+        Integer foundedYear,
+        String headquartersRegion,
+        
+        // Product / Offering
         List<String> valuePropositionKeywords,
-        List<String> regions
+        String targetCustomerSegment,  // "Enterprises", "SMBs", "B2B startups"
+        String priceTier,              // "Premium", "Mid-market", "Freemium"
+        
+        // Technology Stack
+        List<String> techStack,
+        
+        // Go-to-Market
+        String salesModel,             // "Inside Sales", "Outbound", "Product-led Growth"
+        List<String> targetRegions
 ) {}

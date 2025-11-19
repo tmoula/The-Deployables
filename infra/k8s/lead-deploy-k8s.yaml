@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: lead-svc
-        image: lead-svc:1.0.0
+        image: harbor.javajon.duckdns.org/deps/lead-svc:v1
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
