@@ -1,6 +1,6 @@
 FROM eclipse-temurin:17-jdk-alpine AS build
 WORKDIR /app
-COPY build.gradle settings.gradle ./
+COPY build.gradle settings.gradle gradlew gradlew.bat ./
 COPY gradle gradle
 COPY src src
 RUN ./gradlew build -x test
