@@ -7,6 +7,8 @@ import Leads from "./pages/Leads";
 import Campaigns from "./pages/Campaigns";
 import Settings from "./pages/Settings";
 import Login from "./pages/Login";
+import Register from "./pages/Register";
+
 
 // Create context for sidebar state
 const SidebarContext = createContext();
@@ -26,6 +28,7 @@ function AppContent() {
             <Route path="/campaigns" element={<Campaigns />} />
             <Route path="/settings" element={<><Topbar /><Settings /></>} />
             <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
           </Routes>
         </div>
       </div>
