@@ -81,11 +81,11 @@ export const authService = {
       }
 
       const authResponse = await response.json();
-      
+
       // Store token and user email
-      this.setToken(authResponse.token);
+      this.setToken(authResponse.accessToken);
       this.setUserEmail(authResponse.email);
-      
+
       console.log('✅ Login successful:', authResponse.email);
       return authResponse;
     } catch (error) {
