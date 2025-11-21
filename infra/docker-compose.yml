@@ -6,7 +6,7 @@ services:
     hostname: rabbitmq
     restart: unless-stopped
     ports:
-      - "5672:5672"   # AMQP port
+      - "5672:5672" # AMQP port
       - "15672:15672" # Management UI
     environment:
       RABBITMQ_DEFAULT_USER: guest
@@ -33,7 +33,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -55,18 +55,6 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/outreachdb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
-
-  user-svc:
-    build: ../apps/user-svc
-    ports:
-      - "8080:8080"
-    depends_on:
-      - postgres
-      - rabbitmq
-    environment:
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/outreachdb
-      - RABBITMQ_HOST=rabbitmq
-      - RABBITMQ_PORT=5672
 
   lead-svc:
     build: ../apps/lead-svc
