@@ -1,9 +1,50 @@
 services:
+  # RabbitMQ Message Broker
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: outreach-rabbitmq
+    hostname: rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"   # AMQP port
+      - "15672:15672" # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # PostgreSQL Database (separate container with persistent storage)
+  postgres:
+    image: postgres:16
+    container_name: outreach-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: outreachdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   ui:
     build: ../frontend
     ports:
       - "5173:5173"
-  
+    depends_on:
+      - rabbitmq
+
   auth-svc:
     build: ../apps/auth-svc
     ports:
@@ -14,35 +55,81 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/outreachdb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
-  
+
+  user-svc:
+    build: ../apps/user-svc
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - rabbitmq
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/outreachdb
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+
   lead-svc:
     build: ../apps/lead-svc
     ports:
       - "8081:8081"
     depends_on:
       - postgres
-  
+      - rabbitmq
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/outreachdb
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+
   campaign-svc:
     build: ../apps/campaign-svc
     ports:
       - "8082:8082"
-  
+    depends_on:
+      - postgres
+      - rabbitmq
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/outreachdb
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+
+  # AI Service - Now acts as a RabbitMQ adapter
   ai-svc:
     build: ../apps/AI-svc
+    container_name: ai-adapter
     ports:
       - "8090:8090"
-  
-  postgres:
-    image: postgres:16
-    container_name: outreach-postgres
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: outreachdb
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # RabbitMQ Configuration
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=guest
+      - RABBITMQ_PASSWORD=guest
+      - RABBITMQ_VHOST=/
+      - AI_REQUEST_QUEUE=ai.email.generation.requests
+      - AI_RESPONSE_QUEUE=ai.email.generation.responses
+      - AI_ERROR_QUEUE=ai.email.generation.errors
+      # Database Configuration (separate container with persistent storage)
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=outreachdb
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      # AI/LLM Configuration
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - USE_OLLAMA=${USE_OLLAMA:-false}
+      - OLLAMA_URL=${OLLAMA_URL:-http://localhost:11434}
+      # Service Configuration
+      - PORT=8090
+    restart: unless-stopped
 
 volumes:
   postgres_data:
+    driver: local
+  rabbitmq_data:
+    driver: local
