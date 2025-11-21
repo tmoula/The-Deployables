@@ -1,10 +1,18 @@
 import { useState, useEffect } from "react";
-import { NavLink, useLocation } from "react-router-dom";
-import { LayoutDashboard, Users, Mail, Settings, LogIn, ChevronDown, ChevronRight, Inbox, Mailbox } from "lucide-react";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { LayoutDashboard, Users, Mail, Settings, LogIn, LogOut, ChevronDown, ChevronRight, Inbox, Mailbox } from "lucide-react";
+import { authService } from "../services/authService";
 
 export default function Sidebar() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [campaignsExpanded, setCampaignsExpanded] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  // Check authentication state on mount and when location changes
+  useEffect(() => {
+    setIsAuthenticated(authService.isAuthenticated());
+  }, [location]);
 
   // Auto-expand campaigns section if on campaigns-related page
   useEffect(() => {
@@ -13,23 +21,26 @@ export default function Sidebar() {
     }
   }, [location.pathname]);
 
+  const handleLogout = () => {
+    authService.logout();
+    navigate('/login');
+  };
+
   const linkStyle = ({ isActive }) =>
-    `flex items-center gap-3 p-3 rounded-md cursor-pointer transition-all whitespace-nowrap ${
-      isActive
-        ? "bg-blue-600 text-white"
-        : "text-gray-300 hover:bg-gray-800 hover:text-white"
+    `flex items-center gap-3 p-3 rounded-md cursor-pointer transition-all whitespace-nowrap ${isActive
+      ? "bg-blue-600 text-white"
+      : "text-gray-300 hover:bg-gray-800 hover:text-white"
     }`;
 
   const subLinkStyle = ({ isActive }) =>
-    `flex items-center gap-2 py-1.5 pl-8 pr-3 rounded-md cursor-pointer transition-all whitespace-nowrap text-sm ${
-      isActive
-        ? "bg-blue-500/80 text-white font-medium"
-        : "text-gray-400 hover:bg-gray-800/50 hover:text-gray-200"
+    `flex items-center gap-2 py-1.5 pl-8 pr-3 rounded-md cursor-pointer transition-all whitespace-nowrap text-sm ${isActive
+      ? "bg-blue-500/80 text-white font-medium"
+      : "text-gray-400 hover:bg-gray-800/50 hover:text-gray-200"
     }`;
 
-  const isCampaignsActive = location.pathname.startsWith('/campaigns') || 
-                           location.pathname.startsWith('/master-inbox') || 
-                           location.pathname.startsWith('/mailboxes');
+  const isCampaignsActive = location.pathname.startsWith('/campaigns') ||
+    location.pathname.startsWith('/master-inbox') ||
+    location.pathname.startsWith('/mailboxes');
 
   return (
     <>
@@ -57,11 +68,10 @@ export default function Sidebar() {
             <div>
               <button
                 onClick={() => setCampaignsExpanded(!campaignsExpanded)}
-                className={`w-full flex items-center gap-3 p-3 rounded-md cursor-pointer transition-all whitespace-nowrap ${
-                  isCampaignsActive
+                className={`w-full flex items-center gap-3 p-3 rounded-md cursor-pointer transition-all whitespace-nowrap ${isCampaignsActive
                     ? "bg-blue-600 text-white"
                     : "text-gray-300 hover:bg-gray-800 hover:text-white"
-                }`}
+                  }`}
               >
                 <Mail size={20} className="flex-shrink-0" />
                 <span className="flex-1 text-left">Campaigns</span>
@@ -71,7 +81,7 @@ export default function Sidebar() {
                   <ChevronRight size={16} className="flex-shrink-0" />
                 )}
               </button>
-              
+
               {/* Sub-menu items */}
               {campaignsExpanded && (
                 <div className="ml-2 mt-1 space-y-0.5 border-l-2 border-gray-700/50 pl-2">
@@ -103,12 +113,22 @@ export default function Sidebar() {
             </NavLink>
           </nav>
 
-          {/* Login button at the bottom */}
+          {/* Login/Logout button at the bottom */}
           <div className="mt-auto pt-4 border-t border-gray-700">
-            <NavLink to="/login" className={linkStyle}>
-              <LogIn size={20} className="flex-shrink-0" />
-              <span>Login</span>
-            </NavLink>
+            {isAuthenticated ? (
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-3 p-3 rounded-md cursor-pointer transition-all whitespace-nowrap text-gray-300 hover:bg-gray-800 hover:text-white w-full"
+              >
+                <LogOut size={20} className="flex-shrink-0" />
+                <span>Logout</span>
+              </button>
+            ) : (
+              <NavLink to="/login" className={linkStyle}>
+                <LogIn size={20} className="flex-shrink-0" />
+                <span>Login</span>
+              </NavLink>
+            )}
           </div>
         </div>
       </div>

@@ -1,13 +1,41 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Settings, LogOut } from "lucide-react";
+import { authService } from "../services/authService";
 
 export default function Topbar() {
+  const navigate = useNavigate();
   const [showDropdown, setShowDropdown] = useState(false);
-  const [user] = useState({
-    name: "John Doe",
-    email: "john.doe@techsolutions.com",
-    initials: "JD"
+  const [user, setUser] = useState({
+    name: "",
+    email: "",
+    initials: "?"
   });
+
+  useEffect(() => {
+    // Load user data from localStorage
+    const userEmail = authService.getUserEmail();
+
+    if (userEmail) {
+      // Generate initials from email (e.g., "test@example.com" -> "TE")
+      const emailParts = userEmail.split('@')[0];
+      const initials = emailParts.length >= 2
+        ? emailParts.substring(0, 2).toUpperCase()
+        : emailParts.substring(0, 1).toUpperCase();
+
+      setUser({
+        name: userEmail, // Use email as name for now
+        email: userEmail,
+        initials: initials
+      });
+    }
+  }, []);
+
+  const handleLogout = () => {
+    setShowDropdown(false);
+    authService.logout();
+    navigate('/login');
+  };
 
   return (
     <div className="bg-white shadow-sm border-b border-gray-200 p-4">
@@ -34,8 +62,8 @@ export default function Topbar() {
                       {user.initials}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900">{user.name}</p>
-                      <p className="text-xs text-gray-500 break-words">{user.email}</p>
+                      <p className="text-sm font-medium text-gray-900">{user.email}</p>
+                      <p className="text-xs text-gray-500 break-words">Logged in</p>
                     </div>
                   </div>
                 </div>
@@ -50,10 +78,7 @@ export default function Topbar() {
                   </a>
                   <button
                     className="flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50 w-full text-left transition"
-                    onClick={() => {
-                      setShowDropdown(false);
-                      alert("Sign out functionality coming soon");
-                    }}
+                    onClick={handleLogout}
                   >
                     <LogOut size={18} />
                     Sign Out

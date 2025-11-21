@@ -1,17 +1,33 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { User, Mail, Building, Globe, Bell, Key, Save, Edit2, LogOut } from "lucide-react";
+import { authService } from "../services/authService";
 
 export default function Settings() {
+  const navigate = useNavigate();
   const [isEditing, setIsEditing] = useState(false);
   const [profile, setProfile] = useState({
-    name: "John Doe",
-    email: "john.doe@techsolutions.com",
-    company: "TechSolutions Inc",
-    role: "Sales Manager",
-    phone: "+1 (555) 123-4567",
+    name: "",
+    email: "",
+    company: "",
+    role: "",
+    phone: "",
     timezone: "America/New_York",
     language: "English"
   });
+
+  useEffect(() => {
+    // Load user data from localStorage
+    const userEmail = authService.getUserEmail();
+
+    if (userEmail) {
+      setProfile(prev => ({
+        ...prev,
+        name: userEmail.split('@')[0], // Use email prefix as name
+        email: userEmail
+      }));
+    }
+  }, []);
 
   const [notifications, setNotifications] = useState({
     emailAlerts: true,
@@ -315,9 +331,15 @@ export default function Settings() {
             <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
               <div>
                 <p className="font-medium text-gray-900">Sign Out</p>
-                <p className="text-sm text-gray-600">Sign out from all devices</p>
+                <p className="text-sm text-gray-600">Sign out from this device</p>
               </div>
-              <button className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition">
+              <button
+                onClick={() => {
+                  authService.logout();
+                  navigate('/login');
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition"
+              >
                 <LogOut size={18} />
                 Sign Out
               </button>
