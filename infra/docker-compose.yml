@@ -39,11 +39,16 @@ services:
       retries: 5
 
   ui:
-    build: ../frontend
+    build:
+      context: ../frontend
+      args:
+        REACT_APP_AUTH_URL: http://localhost:8083/api/v1/auth
+        REACT_APP_API_URL: http://localhost:8081/api/v1
     ports:
-      - "5173:5173"
+      - "5173:80"
     depends_on:
       - rabbitmq
+      - auth-svc
 
   auth-svc:
     build: ../apps/auth-svc
@@ -55,6 +60,8 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/outreachdb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
+      # JWT Configuration
+      JWT_SECRET: ${JWT_SECRET:-change-this-secret-in-production-must-be-at-least-64-characters-long-for-hs512}
 
   lead-svc:
     build: ../apps/lead-svc
