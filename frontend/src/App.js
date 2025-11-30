@@ -9,6 +9,8 @@ import Campaigns from "./pages/Campaigns";
 import Settings from "./pages/Settings";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import MasterInbox from "./pages/MasterInbox";
+import Mailboxes from "./pages/Mailboxes";
 
 
 // Create context for sidebar state
@@ -52,6 +54,22 @@ function AppContent() {
               element={
                 <PrivateRoute>
                   <Campaigns />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/master-inbox"
+              element={
+                <PrivateRoute>
+                  <MasterInbox />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/mailboxes"
+              element={
+                <PrivateRoute>
+                  <Mailboxes />
                 </PrivateRoute>
               }
             />
