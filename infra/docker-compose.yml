@@ -62,6 +62,9 @@ services:
       SPRING_DATASOURCE_PASSWORD: postgres
       # JWT Configuration
       JWT_SECRET: ${JWT_SECRET:-change-this-secret-in-production-must-be-at-least-64-characters-long-for-hs512}
+      # Email Configuration
+      MAIL_USERNAME: simon.danih@gmail.com
+      MAIL_PASSWORD: "gtqa kbid cggb cljo"
 
   lead-svc:
     build: ../apps/lead-svc
