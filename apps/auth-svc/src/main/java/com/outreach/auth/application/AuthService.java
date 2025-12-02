@@ -64,7 +64,7 @@ public class AuthService {
         }
         
         String token = jwtTokenProvider.generateToken(email);
-        return new AuthTokenResponse(token, "Bearer", 86400L, email);
+        return new AuthTokenResponse(token, "Bearer", 86400L, email, user.getFirstName(), user.getLastName());
     }
 
     public void verify(String email, String code) {

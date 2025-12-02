@@ -82,9 +82,10 @@ export const authService = {
 
       const authResponse = await response.json();
 
-      // Store token and user email
+      // Store token and user details
       this.setToken(authResponse.accessToken);
       this.setUserEmail(authResponse.email);
+      this.setUserName(authResponse.firstName, authResponse.lastName);
 
       console.log('✅ Login successful:', authResponse.email);
       return authResponse;
@@ -163,6 +164,7 @@ export const authService = {
   logout() {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_EMAIL_KEY);
+    localStorage.removeItem('user_name');
     console.log('🔓 User logged out');
   },
 
@@ -196,6 +198,25 @@ export const authService = {
    */
   getUserEmail() {
     return localStorage.getItem(USER_EMAIL_KEY);
+  },
+
+  /**
+   * Store user name
+   * @param {string} firstName 
+   * @param {string} lastName 
+   */
+  setUserName(firstName, lastName) {
+    if (firstName && lastName) {
+      localStorage.setItem('user_name', `${firstName} ${lastName}`);
+    }
+  },
+
+  /**
+   * Get stored user name
+   * @returns {string|null} User's full name or null
+   */
+  getUserName() {
+    return localStorage.getItem('user_name');
   },
 
   /**

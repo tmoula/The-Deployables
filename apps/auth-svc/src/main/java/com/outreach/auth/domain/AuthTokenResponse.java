@@ -4,5 +4,7 @@ public record AuthTokenResponse(
     String accessToken,
     String tokenType,
     Long expiresIn,
-    String email
+    String email,
+    String firstName,
+    String lastName
 ) {}

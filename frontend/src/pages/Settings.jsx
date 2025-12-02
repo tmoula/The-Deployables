@@ -19,11 +19,12 @@ export default function Settings() {
   useEffect(() => {
     // Load user data from localStorage
     const userEmail = authService.getUserEmail();
+    const userName = authService.getUserName();
 
     if (userEmail) {
       setProfile(prev => ({
         ...prev,
-        name: userEmail.split('@')[0], // Use email prefix as name
+        name: userName || userEmail.split('@')[0], // Use stored name or fallback to email prefix
         email: userEmail
       }));
     }
