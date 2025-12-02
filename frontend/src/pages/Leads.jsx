@@ -10,20 +10,20 @@ export default function Leads() {
   const [hasSearched, setHasSearched] = useState(false);
   const [backendStatus, setBackendStatus] = useState({ connected: false, checking: true });
   
-  // Collapsible sections state - All collapsed by default for better UX
+  // Collapsible sections state - All expanded by default
   const [expandedSellerSections, setExpandedSellerSections] = useState({
-    basics: false,
-    product: false,
-    tech: false,
-    gtm: false
+    basics: true,
+    product: true,
+    tech: true,
+    gtm: true
   });
   const [expandedCriteriaSections, setExpandedCriteriaSections] = useState({
-    general: false,
-    financials: false,
-    technology: false,
-    decisionMakers: false,
-    geography: false,
-    behavioral: false
+    general: true,
+    financials: true,
+    technology: true,
+    decisionMakers: true,
+    geography: true,
+    behavioral: true
   });
 
   // Check backend connection on component mount

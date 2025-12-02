@@ -18,6 +18,8 @@ export default function Campaigns() {
   const [uploading, setUploading] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState(null);
   const [campaignLeads, setCampaignLeads] = useState([]);
+  const [campaignContacts, setCampaignContacts] = useState([]);
+  const [selectedContactId, setSelectedContactId] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [campaignName, setCampaignName] = useState("");
   const [description, setDescription] = useState("");
@@ -59,6 +61,16 @@ export default function Campaigns() {
   });
   const [openMenuId, setOpenMenuId] = useState(null);
   const [editingCampaignId, setEditingCampaignId] = useState(null);
+
+  // Load contacts when entering Step 2
+  useEffect(() => {
+    if (currentStep === 2) {
+      const campaignIdForContacts = editingCampaignId ? parseInt(editingCampaignId) : (selectedCampaign ? (parseInt(selectedCampaign.id) || 1) : 1);
+      if (campaignContacts.length === 0 && !selectedContactId) {
+        loadCampaignContacts(campaignIdForContacts);
+      }
+    }
+  }, [currentStep, editingCampaignId, selectedCampaign]);
 
   // Close dropdown menu when clicking outside
   useEffect(() => {
@@ -114,6 +126,31 @@ export default function Campaigns() {
     }
   };
 
+  const loadCampaignContacts = async (campaignId) => {
+    try {
+      const contacts = await campaignApi.getCampaignContacts(campaignId);
+      setCampaignContacts(contacts || []);
+      // Auto-select first contact if available and none selected
+      if (contacts && contacts.length > 0) {
+        if (!selectedContactId) {
+          setSelectedContactId(contacts[0].contactId);
+        }
+      } else {
+        // If no contacts found, use default contact ID 1 (from database)
+        if (!selectedContactId) {
+          setSelectedContactId(1);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to load campaign contacts:", error);
+      setCampaignContacts([]);
+      // Use default contact ID if loading fails
+      if (!selectedContactId) {
+        setSelectedContactId(1);
+      }
+    }
+  };
+
   // 🔧 FIXED: this no longer advances the step or checks name.
   // It *only* validates the file and stores it.
   const handleFileSelect = (file) => {
@@ -147,10 +184,18 @@ export default function Campaigns() {
       );
       const campaign = result.campaign || result;
       const leadsCount = result.leadsCount || campaign.totalLeads || 0;
+      
+      // Load contacts after import (leads are now in database)
+      if (campaign.id) {
+        // Use campaign ID to load contacts
+        const campaignIdForContacts = parseInt(campaign.id) || 1;
+        await loadCampaignContacts(campaignIdForContacts);
+      }
+      
       alert(
         `Successfully uploaded ${leadsCount} leads! Campaign created: ${
           campaign.name || "Campaign"
-        }`
+        }. ${result.importedLeads ? result.importedLeads.length + ' contacts imported to database.' : ''}`
       );
       // Reset all state
       setCampaignName("");
@@ -263,6 +308,9 @@ export default function Campaigns() {
   const handleViewLeads = async (campaign) => {
     setSelectedCampaign(campaign);
     await loadCampaignLeads(campaign.id);
+    // Also load contacts from database
+    const campaignIdForContacts = parseInt(campaign.id) || 1;
+    await loadCampaignContacts(campaignIdForContacts);
   };
 
   const handleStatusChange = async (campaignId, newStatus) => {
@@ -493,6 +541,8 @@ export default function Campaigns() {
                   followUpTiming={followUpTiming}
                   setFollowUpTiming={setFollowUpTiming}
                   campaignName={campaignName}
+                  campaignId={editingCampaignId ? parseInt(editingCampaignId) : (selectedCampaign ? (parseInt(selectedCampaign.id) || 1) : 1)}
+                  contactId={selectedContactId || (campaignContacts && campaignContacts.length > 0 ? campaignContacts[0].contactId : 1)}
                 />
                 {/* Navigation Buttons for Step 2 */}
                 <div className="flex justify-between items-center pt-6 mt-6 border-t border-gray-200">

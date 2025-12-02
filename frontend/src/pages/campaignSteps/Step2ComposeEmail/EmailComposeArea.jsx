@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { SketchPicker } from 'react-color';
+import { campaignApi } from '../../../services/campaignApi';
 
 const AVAILABLE_VARIABLES = [
   { key: 'firstName', label: 'First Name', icon: User },
@@ -25,7 +26,9 @@ export default function EmailComposeArea({
   emailContent,
   setEmailContent,
   campaignName,
-  campaignContext
+  campaignContext,
+  campaignId,
+  contactId
 }) {
   const editorRef = useRef(null);
   const [isEditorFocused, setIsEditorFocused] = useState(false);
@@ -44,6 +47,8 @@ export default function EmailComposeArea({
   const [emailClient, setEmailClient] = useState('gmail'); // 'gmail', 'outlook', 'apple-mail'
   const [colorPickerColor, setColorPickerColor] = useState({ hex: '#000000' });
   const [highlightPickerColor, setHighlightPickerColor] = useState({ hex: '#FEF08A' });
+  const [contactData, setContactData] = useState(null);
+  const [previewKey, setPreviewKey] = useState(0); // Used to refresh preview with new spintax
 
   // Close color pickers when clicking outside
   useEffect(() => {
@@ -328,54 +333,164 @@ Best regards,<br>
   // AI Writing Assistant - Generate email content
   const handleAIWriting = async () => {
     setIsAIGenerating(true);
-    // TODO: Replace with actual AI service call
-    // const response = await aiService.generateEmail({
-    //   campaignName,
-    //   campaignContext,
-    //   emailType: 'initial' // or 'follow-up'
-    // });
     
-    // Mock AI generation
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    const mockSubject = campaignName 
-      ? `Quick question about ${campaignName}`
-      : 'Quick question about your business';
-    
-    const mockContent = `Hi {{firstName}},
-
-I noticed {{company}} is in the {{industry}} space. I'd love to share how we've helped similar companies [achieve specific result].
-
-Would you be open to a quick 15-minute conversation this week?
-
-Best regards,
-[Your Name]`;
-    
-    if (editorRef.current) {
-      editorRef.current.innerHTML = mockContent;
-      setEmailContent(mockContent);
-      setEmailSubject(mockSubject);
+    try {
+      // Check if we have required IDs
+      if (!campaignId || !contactId) {
+        alert("Campaign ID and Contact ID are required to generate personalized emails. Please ensure you have selected a campaign and contact.");
+        setIsAIGenerating(false);
+        return;
+      }
+      
+      // Build email requirements
+      const emailRequirements = {
+        product_service_description: campaignContext?.productDescription || "Our solution helps businesses streamline their operations",
+        value_proposition: campaignContext?.valueProposition || "We help companies achieve better results",
+        tone: campaignContext?.tone || "professional",
+        email_length: campaignContext?.emailLength || "medium",
+        include_call_to_action: true,
+        campaign_name: campaignName || "Outreach Campaign"
+      };
+      
+      // Call AI service via campaign service
+      const response = await campaignApi.generateEmail(
+        campaignId, 
+        contactId, 
+        emailRequirements
+      );
+      
+      if (response.success) {
+        // Update subject and content
+        if (response.subject) {
+          setEmailSubject(response.subject);
+        }
+        if (response.body) {
+          if (editorRef.current) {
+            editorRef.current.innerHTML = response.body;
+            setEmailContent(response.body);
+          }
+        }
+      } else {
+        alert("Failed to generate email: " + (response.error || "Unknown error"));
+      }
+    } catch (error) {
+      console.error("Error generating email:", error);
+      alert("Failed to generate email: " + error.message);
+    } finally {
       setIsAIGenerating(false);
     }
   };
 
-  // Preview with variable replacement
-  const getPreviewContent = () => {
-    let preview = emailContent;
-    AVAILABLE_VARIABLES.forEach(variable => {
-      const regex = new RegExp(`\\{\\{${variable.key}\\}\\}`, 'g');
-      preview = preview.replace(regex, `[${variable.label}]`);
+  // Fetch contact data for preview
+  useEffect(() => {
+    const fetchContactData = async () => {
+      if (contactId && campaignId) {
+        try {
+          const contacts = await campaignApi.getCampaignContacts(campaignId);
+          const contact = contacts?.find(c => c.contactId === contactId) || contacts?.[0];
+          if (contact) {
+            setContactData(contact);
+          }
+        } catch (error) {
+          console.error("Failed to fetch contact data:", error);
+        }
+      }
+    };
+    fetchContactData();
+  }, [contactId, campaignId]);
+
+  // Expand spintax: {option1|option2|option3} -> randomly pick one
+  // IMPORTANT: Preserve {{variable}} patterns (double braces) - only expand single brace spintax
+  const expandSpintax = (text) => {
+    if (!text) return text;
+    
+    // Use a seed based on previewKey to get consistent random selection for this preview
+    let seed = previewKey;
+    const random = () => {
+      seed = (seed * 9301 + 49297) % 233280;
+      return seed / 233280;
+    };
+    
+    // First, temporarily replace {{variable}} with placeholders to protect them
+    const variablePlaceholders = new Map();
+    let placeholderIndex = 0;
+    let protectedText = text;
+    
+    // Protect all {{variable}} patterns
+    protectedText = protectedText.replace(/\{\{(\w+)\}\}/g, (match, varName) => {
+      const placeholder = `__VAR_PLACEHOLDER_${placeholderIndex}__`;
+      variablePlaceholders.set(placeholder, match);
+      placeholderIndex++;
+      return placeholder;
     });
+    
+    // Now expand spintax patterns (single braces only)
+    let expanded = protectedText.replace(/\{([^}]+)\}/g, (match, options) => {
+      const choices = options.split('|').map(opt => opt.trim());
+      if (choices.length === 0) return match;
+      const selected = choices[Math.floor(random() * choices.length)];
+      return selected;
+    });
+    
+    // Restore {{variable}} patterns
+    variablePlaceholders.forEach((original, placeholder) => {
+      expanded = expanded.replace(placeholder, original);
+    });
+    
+    return expanded;
+  };
+
+  // Replace variables with actual contact/company data from CSV
+  // This runs AFTER spintax expansion, so {{variable}} should be intact
+  const replaceVariables = (text) => {
+    if (!text || !contactData) return text;
+    
+    // Use actual CSV data from contactData
+    const replacements = {
+      '{{firstName}}': contactData.firstName || '',
+      '{{lastName}}': contactData.lastName || '',
+      '{{company}}': contactData.companyName || '',
+      '{{position}}': contactData.jobTitle || '',
+      '{{email}}': contactData.email || '',
+      '{{domain}}': (contactData.email && contactData.email.includes('@')) ? contactData.email.split('@')[1] : '',
+      '{{industry}}': contactData.companyIndustry || '',
+      '{{personalizationHook}}': contactData.personalizationNotes || ''
+    };
+    
+    let result = text;
+    // Replace each variable (escape braces for regex)
+    Object.entries(replacements).forEach(([variable, value]) => {
+      // Escape braces: {{variable}} -> \{\{variable\}\}
+      const escaped = variable.replace(/[{}]/g, '\\$&');
+      const regex = new RegExp(escaped, 'g');
+      result = result.replace(regex, value);
+    });
+    
+    return result;
+  };
+
+  // Preview with spintax expansion and variable replacement
+  const getPreviewContent = () => {
+    let preview = emailContent || '';
+    // First expand spintax
+    preview = expandSpintax(preview);
+    // Then replace variables
+    preview = replaceVariables(preview);
     return preview;
   };
 
   const getPreviewSubject = () => {
-    let preview = emailSubject;
-    AVAILABLE_VARIABLES.forEach(variable => {
-      const regex = new RegExp(`\\{\\{${variable.key}\\}\\}`, 'g');
-      preview = preview.replace(regex, `[${variable.label}]`);
-    });
+    let preview = emailSubject || '';
+    // First expand spintax
+    preview = expandSpintax(preview);
+    // Then replace variables
+    preview = replaceVariables(preview);
     return preview;
+  };
+
+  // Refresh preview with new spintax selection
+  const refreshPreview = () => {
+    setPreviewKey(prev => prev + 1);
   };
 
   const colors = [
@@ -481,6 +596,15 @@ Best regards,
                     title="Phone Notification"
                   >
                     <Smartphone size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={refreshPreview}
+                    className="px-2 py-1 text-xs rounded transition-colors flex items-center gap-1 bg-transparent text-gray-600 hover:bg-gray-100 border-l border-gray-300 ml-1 pl-2"
+                    title="Refresh Preview (New Spintax Selection)"
+                  >
+                    <Undo2 size={14} />
+                    <span className="text-xs">Refresh</span>
                   </button>
               </div>
             </>
@@ -1015,6 +1139,35 @@ Use the Variables button to insert personalization variables like {{firstName}},
                     </div>
                   </div>
                 )}
+
+                {/* Full Email Preview */}
+                <div className="w-full max-w-4xl bg-white rounded-lg shadow-lg overflow-hidden border border-gray-200 mt-6">
+                  <div className="bg-gray-50 border-b border-gray-200 px-6 py-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-semibold text-gray-900">Email Preview</h3>
+                      <button
+                        type="button"
+                        onClick={refreshPreview}
+                        className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center gap-2"
+                        title="Refresh with new spintax selection"
+                      >
+                        <Undo2 size={14} />
+                        Refresh Preview
+                      </button>
+                    </div>
+                  </div>
+                  <div className="p-6">
+                    <div className="mb-4 pb-4 border-b border-gray-200">
+                      <div className="text-xs text-gray-500 mb-1">Subject:</div>
+                      <div className="text-base font-semibold text-gray-900">{getPreviewSubject() || '(No subject)'}</div>
+                    </div>
+                    <div className="text-xs text-gray-500 mb-2">Body:</div>
+                    <div 
+                      className="prose prose-sm max-w-none text-gray-700"
+                      dangerouslySetInnerHTML={{ __html: getPreviewContent() || '<p>No content yet</p>' }}
+                    />
+                  </div>
+                </div>
               </div>
             )}
 

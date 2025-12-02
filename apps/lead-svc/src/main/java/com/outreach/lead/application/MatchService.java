@@ -34,7 +34,7 @@ public class MatchService {
     }
     public Prospect createProspect(Prospect in){ 
         // This method is kept for API compatibility but doesn't store prospects
-        // Prospects are now fetched dynamically from Gemini AI
+        // Prospects are now fetched dynamically from AI Service
         if(in == null) throw new IllegalArgumentException("Prospect cannot be null");
         // Auto-generate ID if not provided
         return in.id() == null || in.id().isEmpty() 
@@ -45,7 +45,7 @@ public class MatchService {
     }
 
 
-    // 3) Match using criteria - dynamically fetch from Gemini AI
+    // 3) Match using criteria - dynamically fetch from AI Service
     public List<ScoredProspect> match(ProspectCriteria c, int limit){
         System.out.println("=== MATCH SERVICE: Starting match ===");
         System.out.println("Seller is null: " + (seller == null));
@@ -54,7 +54,7 @@ public class MatchService {
             return List.of();
         }
 
-        // Dynamically fetch prospects from Gemini AI based on criteria
+        // Dynamically fetch prospects from AI Service based on criteria
         // For testing: limit to 5 prospects
         int requestedLimit = 5;
         System.out.println("=== MATCH SERVICE: Calling prospectService.searchProspects ===");
@@ -62,11 +62,11 @@ public class MatchService {
         System.out.println("=== MATCH SERVICE: Received " + fetchedProspects.size() + " prospects from searchProspects ===");
         
         if (fetchedProspects.isEmpty()) {
-            System.err.println("ERROR: No prospects fetched from Gemini. Check API key and criteria.");
+            System.err.println("ERROR: No prospects fetched from AI Service. Check AI service connection and criteria.");
             return List.of();
         }
         
-        // Generate personalization hooks for all prospects using Gemini AI
+        // Generate personalization hooks for all prospects using AI Service
         System.out.println("=== Generating personalization hooks for " + fetchedProspects.size() + " prospects ===");
         fetchedProspects = prospectService.enrichProspectsWithHooks(fetchedProspects, seller);
 

@@ -23,6 +23,15 @@ public class MatchController {
     }
     @PutMapping("/seller")
     public SellerProfile putSeller(@RequestBody SellerProfile s){ return svc.setSeller(s); }
+    
+    @GetMapping("/seller")
+    public ResponseEntity<SellerProfile> getSeller() {
+        SellerProfile seller = svc.getSeller();
+        if (seller == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(seller);
+    }
 
     @GetMapping("/prospects") public List<Prospect> listProspects(){ return svc.listProspects(); }
 
@@ -59,7 +68,7 @@ public class MatchController {
 
     /**
      * Generate CSV from matched prospects
-     * User provides criteria, system calls Gemini AI, returns CSV
+     * User provides criteria, system calls AI Service, returns CSV
      */
     @PostMapping("/generate-csv")
     public ResponseEntity<String> generateCsv(
@@ -70,7 +79,7 @@ public class MatchController {
             criteria = new ProspectCriteria(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
         }
         
-        // Get matched prospects (this will call Gemini AI dynamically)
+        // Get matched prospects (this will call AI Service dynamically)
         List<MatchService.ScoredProspect> scoredProspects = svc.match(criteria, limit);
         
         // Generate CSV

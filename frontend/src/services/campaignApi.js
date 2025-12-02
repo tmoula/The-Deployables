@@ -67,6 +67,33 @@ export const campaignApi = {
       throw new Error(`Failed to update campaign status: ${response.statusText}`);
     }
     return response.json();
+  },
+
+  // Generate email using AI service
+  async generateEmail(campaignId, contactId, emailRequirements = {}) {
+    const response = await fetch(
+      `${CAMPAIGN_API_URL}/campaigns/${campaignId}/contacts/${contactId}/generate-email`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(emailRequirements)
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || `Failed to generate email: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  // Get contacts for a campaign
+  async getCampaignContacts(campaignId) {
+    const response = await fetch(`${CAMPAIGN_API_URL}/campaigns/${campaignId}/contacts`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch contacts: ${response.statusText}`);
+    }
+    return response.json();
   }
 };
 

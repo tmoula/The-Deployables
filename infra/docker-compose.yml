@@ -73,10 +73,12 @@ services:
     depends_on:
       - postgres
       - rabbitmq
+      - ai-svc
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/outreachdb
       - RABBITMQ_HOST=rabbitmq
       - RABBITMQ_PORT=5672
+      - AI_SERVICE_URL=http://ai-svc:8090
 
   campaign-svc:
     build: ../apps/campaign-svc
@@ -85,10 +87,16 @@ services:
     depends_on:
       - postgres
       - rabbitmq
+      - ai-svc
+      - lead-svc
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/outreachdb
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=postgres
       - RABBITMQ_HOST=rabbitmq
       - RABBITMQ_PORT=5672
+      - AI_SERVICE_URL=http://ai-svc:8090
+      - LEAD_SERVICE_URL=http://lead-svc:8081
 
   # AI Service - Now acts as a RabbitMQ adapter
   ai-svc:
@@ -122,6 +130,10 @@ services:
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
       - USE_OLLAMA=${USE_OLLAMA:-false}
       - OLLAMA_URL=${OLLAMA_URL:-http://localhost:11434}
+      # Gemini API Configuration (primary AI provider)
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-AIzaSyAWkG54KoJ5rcIzxexy0LMHhT2ur6X1hoE}
+      - GEMINI_API_URL=${GEMINI_API_URL:-https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent}
+      - USE_GEMINI=${USE_GEMINI:-true}
       # Service Configuration
       - PORT=8090
     restart: unless-stopped

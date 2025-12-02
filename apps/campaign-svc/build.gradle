@@ -41,6 +41,10 @@ dependencies {
     // Testing (JUnit, MockMvc, etc.)
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    
+    // Database support
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.postgresql:postgresql'
 }
 
 tasks.named('test') {

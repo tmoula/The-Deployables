@@ -17,7 +17,9 @@ export default function Step2ComposeEmail({
   setSelectedFollowUpVariant,
   followUpTiming,
   setFollowUpTiming,
-  campaignName
+  campaignName,
+  campaignId,
+  contactId
 }) {
   const isSwitchingRef = useRef(false);
   const variantsRef = useRef(emailVariants);
@@ -105,6 +107,8 @@ export default function Step2ComposeEmail({
         setEmailContent={setEmailContent}
         campaignName={campaignName}
         campaignContext={{ campaignName }} // TODO: Expand with more context (industry, target audience, etc.)
+        campaignId={campaignId}
+        contactId={contactId}
       />
     </div>
   );
