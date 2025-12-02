@@ -41,6 +41,9 @@ dependencies {
     // OpenAPI + Swagger
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
     
+    // JavaMail for Gmail IMAP/SMTP
+    implementation 'com.sun.mail:jakarta.mail:2.0.1'
+    
     // DevTools
     developmentOnly 'org.springframework.boot:spring-boot-devtools'
     
