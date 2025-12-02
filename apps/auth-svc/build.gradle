@@ -43,6 +43,7 @@ dependencies {
     
     // JavaMail for Gmail IMAP/SMTP
     implementation 'com.sun.mail:jakarta.mail:2.0.1'
+    implementation 'org.springframework.boot:spring-boot-starter-mail'
     
     // DevTools
     developmentOnly 'org.springframework.boot:spring-boot-devtools'

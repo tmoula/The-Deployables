@@ -127,6 +127,37 @@ export const authService = {
   },
 
   /**
+   * Verify user's email with a code
+   * @param {string} email - User's email address
+   * @param {string} code - Verification code
+   * @returns {Promise<boolean>} True if verification is successful
+   */
+  async verify(email, code) {
+    try {
+      const response = await fetch(`${AUTH_BASE_URL}/verify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, code }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || 'Verification failed');
+      }
+
+      console.log('✅ Email verification successful for:', email);
+      return true;
+    } catch (error) {
+      if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+        throw new Error(`Cannot connect to auth service at ${AUTH_BASE_URL}. Make sure the backend is running on http://localhost:8083`);
+      }
+      throw error;
+    }
+  },
+
+  /**
    * Logout the current user
    */
   logout() {

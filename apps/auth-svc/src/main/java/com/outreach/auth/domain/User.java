@@ -27,6 +27,12 @@ public class User {
     
     @Column(nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
+
+    @Column(name = "verification_code")
+    private String verificationCode;
+
+    @Column(name = "is_verified")
+    private Boolean isVerified = false;
     
     // Constructors
     public User() {}
@@ -58,4 +64,10 @@ public class User {
     public void setEnabled(Boolean enabled) { this.enabled = enabled; }
     
     public LocalDateTime getCreatedAt() { return createdAt; }
+
+    public String getVerificationCode() { return verificationCode; }
+    public void setVerificationCode(String verificationCode) { this.verificationCode = verificationCode; }
+
+    public Boolean getIsVerified() { return isVerified; }
+    public void setIsVerified(Boolean isVerified) { this.isVerified = isVerified; }
 }

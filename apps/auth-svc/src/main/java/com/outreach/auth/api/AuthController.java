@@ -41,6 +41,16 @@ public class AuthController {
         }
     }
     
+    @PostMapping("/verify")
+    public ResponseEntity<?> verify(@Valid @RequestBody com.outreach.auth.api.dto.VerifyRequest req) {
+        try {
+            authService.verify(req.email(), req.code());
+            return ResponseEntity.ok("Email verified successfully");
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        }
+    }
+    
     @GetMapping("/validate")
     public ResponseEntity<Boolean> validateToken(@RequestHeader("Authorization") String authHeader) {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
