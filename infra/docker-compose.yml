@@ -92,7 +92,6 @@ services:
     build: ../apps/AI-svc
     container_name: ai-adapter
     ports:
-      - "8090:8090"
     depends_on:
       rabbitmq:
         condition: service_healthy
