@@ -2,7 +2,6 @@ package com.outreach.campaign.api;
 
 import com.outreach.campaign.application.CampaignService;
 import com.outreach.campaign.application.CsvParserService;
-import com.outreach.campaign.application.EmailGenerationService;
 import com.outreach.campaign.application.LeadImportService;
 import com.outreach.campaign.domain.Campaign;
 import com.outreach.campaign.domain.Lead;
@@ -25,7 +24,6 @@ import java.util.Map;
 public class CampaignController {
     private final CampaignService campaignService;
     private final CsvParserService csvParserService;
-    private final EmailGenerationService emailGenerationService;
     private final LeadImportService leadImportService;
     private final ContactRepository contactRepository;
     private final CompanyRepository companyRepository;
@@ -33,14 +31,12 @@ public class CampaignController {
     public CampaignController(
         CampaignService campaignService, 
         CsvParserService csvParserService,
-        EmailGenerationService emailGenerationService,
         LeadImportService leadImportService,
         ContactRepository contactRepository,
         CompanyRepository companyRepository
     ) {
         this.campaignService = campaignService;
         this.csvParserService = csvParserService;
-        this.emailGenerationService = emailGenerationService;
         this.leadImportService = leadImportService;
         this.contactRepository = contactRepository;
         this.companyRepository = companyRepository;
@@ -176,30 +172,5 @@ public class CampaignController {
         }
     }
     
-    @PostMapping("/campaigns/{campaignId}/contacts/{contactId}/generate-email")
-    public ResponseEntity<?> generateEmail(
-            @PathVariable Integer campaignId,
-            @PathVariable Integer contactId,
-            @RequestBody(required = false) Map<String, Object> emailRequirements) {
-        try {
-            if (emailRequirements == null) {
-                emailRequirements = new HashMap<>();
-            }
-            
-            Map<String, Object> generatedEmail = emailGenerationService.generateEmailForContact(
-                contactId,
-                campaignId,
-                emailRequirements
-            );
-            
-            return ResponseEntity.ok(generatedEmail);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest()
-                .body(Map.of("error", e.getMessage()));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Map.of("error", "Failed to generate email: " + e.getMessage()));
-        }
-    }
 }
 

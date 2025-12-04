@@ -1,6 +1,6 @@
 # AI Email Generation Adapter Service
 
-This service acts as a **RabbitMQ adapter** that watches for email generation requests from microservices and processes them using AI (OpenAI or Ollama). The service listens to RabbitMQ queues, matches requests with microservice requests, and publishes responses back to RabbitMQ.
+This service acts as a **RabbitMQ adapter** that watches for email generation requests from microservices and processes them using AI (OpenAI primary, Gemini fallback). The service listens to RabbitMQ queues, matches requests with microservice requests, and publishes responses back to RabbitMQ.
 
 ## Architecture
 
@@ -15,7 +15,7 @@ This service acts as a **RabbitMQ adapter** that watches for email generation re
 - **Request Matching**: Matches incoming requests with microservice requests using request_id
 - **Personalized Email Generation**: Creates customized emails based on company and contact information
 - **Email Sequences**: Generates complete follow-up sequences
-- **Flexible LLM Support**: Works with OpenAI API or local Ollama instances
+- **Flexible LLM Support**: Uses OpenAI API as primary, automatically falls back to Gemini if OpenAI fails
 - **Database Access**: Can query database for company/contact/campaign information
 - **Error Handling**: Publishes errors to dedicated error queue
 
@@ -24,7 +24,7 @@ This service acts as a **RabbitMQ adapter** that watches for email generation re
 ### Prerequisites
 
 - Python 3.11+
-- OpenAI API key OR Ollama running locally
+- OpenAI API key (required for primary), Gemini API key (optional for fallback)
 
 ### Installation
 
@@ -52,11 +52,11 @@ cp .env.example .env
 - `AI_ERROR_QUEUE`: Queue name for errors (default: ai.email.generation.errors)
 
 **AI/LLM Configuration:**
-- `OPENAI_API_KEY`: Your OpenAI API key (required if not using Ollama)
+- `OPENAI_API_KEY`: Your OpenAI API key (required for primary provider)
 - `OPENAI_MODEL`: Model to use (default: gpt-4o-mini)
-- `USE_OLLAMA`: Set to "true" to use Ollama instead of OpenAI
-- `OLLAMA_URL`: Ollama server URL (default: http://localhost:11434)
-- `OLLAMA_MODEL`: Ollama model name (default: llama3.2)
+- `OPENAI_BASE_URL`: Optional custom OpenAI API base URL
+- `GEMINI_API_KEY`: Your Gemini API key (optional, used as fallback if OpenAI fails)
+- `GEMINI_API_URL`: Gemini API URL (default: gemini-2.5-flash model)
 
 **Database Configuration:**
 - `DB_HOST`: Database host (default: localhost)

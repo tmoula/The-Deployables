@@ -40,7 +40,6 @@ export default function EmailComposeArea({
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [showAIFeedback, setShowAIFeedback] = useState(true);
   const [aiFeedback, setAiFeedback] = useState({ subject: [], content: [] });
-  const [isAIGenerating, setIsAIGenerating] = useState(false);
   const feedbackTimeoutRef = useRef(null);
   const [previewMode, setPreviewMode] = useState('desktop'); // 'desktop', 'phone'
   const [phoneNotificationType, setPhoneNotificationType] = useState('lockscreen'); // 'lockscreen', 'popup'
@@ -210,8 +209,6 @@ Best regards,<br>
 
   // AI Feedback Generation (Mock - will be replaced with actual AI service)
   const generateAIFeedback = useCallback(async (subject, content, campaignName, campaignContext) => {
-    setIsAIGenerating(true);
-    
     // TODO: Replace with actual AI service call
     // const response = await aiService.generateFeedback({
     //   subject,
@@ -293,7 +290,6 @@ Best regards,<br>
     }
     
     setAiFeedback({ subject: subjectFeedback, content: contentFeedback });
-    setIsAIGenerating(false);
   }, []);
 
   // Debounced AI feedback generation
@@ -330,56 +326,6 @@ Best regards,<br>
     }
   };
 
-  // AI Writing Assistant - Generate email content
-  const handleAIWriting = async () => {
-    setIsAIGenerating(true);
-    
-    try {
-      // Check if we have required IDs
-      if (!campaignId || !contactId) {
-        alert("Campaign ID and Contact ID are required to generate personalized emails. Please ensure you have selected a campaign and contact.");
-        setIsAIGenerating(false);
-        return;
-      }
-      
-      // Build email requirements
-      const emailRequirements = {
-        product_service_description: campaignContext?.productDescription || "Our solution helps businesses streamline their operations",
-        value_proposition: campaignContext?.valueProposition || "We help companies achieve better results",
-        tone: campaignContext?.tone || "professional",
-        email_length: campaignContext?.emailLength || "medium",
-        include_call_to_action: true,
-        campaign_name: campaignName || "Outreach Campaign"
-      };
-      
-      // Call AI service via campaign service
-      const response = await campaignApi.generateEmail(
-        campaignId, 
-        contactId, 
-        emailRequirements
-      );
-      
-      if (response.success) {
-        // Update subject and content
-        if (response.subject) {
-          setEmailSubject(response.subject);
-        }
-        if (response.body) {
-          if (editorRef.current) {
-            editorRef.current.innerHTML = response.body;
-            setEmailContent(response.body);
-          }
-        }
-      } else {
-        alert("Failed to generate email: " + (response.error || "Unknown error"));
-      }
-    } catch (error) {
-      console.error("Error generating email:", error);
-      alert("Failed to generate email: " + error.message);
-    } finally {
-      setIsAIGenerating(false);
-    }
-  };
 
   // Fetch contact data for preview
   useEffect(() => {
@@ -891,28 +837,6 @@ Best regards,<br>
 Use the Variables button to insert personalization variables like {{firstName}}, {{company}}, etc."
                 />
                 
-                {/* AI Writing Assistant - Floating Button */}
-                <div className="absolute bottom-4 right-4 z-10">
-                  <button
-                    type="button"
-                    onClick={handleAIWriting}
-                    disabled={isAIGenerating}
-                    className="px-4 py-2.5 text-sm bg-white/80 backdrop-blur-md border border-purple-200/50 rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white/90 hover:border-purple-300/70 group"
-                    title="AI Writing Assistant"
-                  >
-                    {isAIGenerating ? (
-                      <>
-                        <Loader size={16} className="animate-spin text-purple-600" />
-                        <span className="text-gray-700 font-medium">Generating...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles size={16} className="text-purple-600 group-hover:scale-110 transition-transform" />
-                        <span className="text-gray-700 font-medium">AI Writing</span>
-                      </>
-                    )}
-                  </button>
-                </div>
               </div>
             </div>
           </>
@@ -1346,15 +1270,12 @@ Use the Variables button to insert personalization variables like {{firstName}},
         ) : null}
 
         {/* AI Feedback Panel */}
-        {showAIFeedback && (aiFeedback.subject.length > 0 || aiFeedback.content.length > 0 || isAIGenerating) && (
+        {showAIFeedback && (aiFeedback.subject.length > 0 || aiFeedback.content.length > 0) && (
           <div className="mt-3 border border-purple-200 rounded-lg bg-gradient-to-br from-purple-50 to-blue-50 p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <Sparkles size={16} className="text-purple-600" />
                 <h4 className="text-sm font-semibold text-gray-800">AI Writing Assistant</h4>
-                {isAIGenerating && (
-                  <Loader size={14} className="animate-spin text-purple-600" />
-                )}
               </div>
               <button
                 onClick={() => setShowAIFeedback(false)}

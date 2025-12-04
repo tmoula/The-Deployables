@@ -45,3 +45,6 @@ public class Contact {
     public void setPersonalizationNotes(String personalizationNotes) { this.personalizationNotes = personalizationNotes; }
 }
 
+
+
+

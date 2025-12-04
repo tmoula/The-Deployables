@@ -9,6 +9,9 @@ export default function Leads() {
   const [criteriaErrors, setCriteriaErrors] = useState({});
   const [hasSearched, setHasSearched] = useState(false);
   const [backendStatus, setBackendStatus] = useState({ connected: false, checking: true });
+  const [savingSeller, setSavingSeller] = useState(false);
+  const [savingCriteria, setSavingCriteria] = useState(false);
+  const [saveMessage, setSaveMessage] = useState({ type: '', text: '' });
   
   // Collapsible sections state - All expanded by default
   const [expandedSellerSections, setExpandedSellerSections] = useState({
@@ -41,6 +44,29 @@ export default function Leads() {
     checkBackend();
     const interval = setInterval(checkBackend, 10000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Load saved data from localStorage on component mount
+  useEffect(() => {
+    const savedSellerProfile = localStorage.getItem('sellerProfile');
+    if (savedSellerProfile) {
+      try {
+        const parsed = JSON.parse(savedSellerProfile);
+        setSellerProfile(parsed);
+      } catch (error) {
+        console.error("Error loading saved seller profile:", error);
+      }
+    }
+
+    const savedProspectCriteria = localStorage.getItem('prospectCriteria');
+    if (savedProspectCriteria) {
+      try {
+        const parsed = JSON.parse(savedProspectCriteria);
+        setProspectCriteria(parsed);
+      } catch (error) {
+        console.error("Error loading saved prospect criteria:", error);
+      }
+    }
   }, []);
 
   // Debug loading state
@@ -197,6 +223,90 @@ export default function Leads() {
     
     setCriteriaErrors(newErrors);
     return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSaveSellerProfile = async () => {
+    if (!validateSellerProfile()) {
+      setSaveMessage({ type: 'error', text: 'Please fill in all required company information fields.' });
+      setTimeout(() => setSaveMessage({ type: '', text: '' }), 3000);
+      return;
+    }
+
+    try {
+      setSavingSeller(true);
+      
+      // Check backend connection
+      try {
+        await api.checkHealth();
+      } catch (healthError) {
+        setSavingSeller(false);
+        setSaveMessage({ type: 'error', text: 'Cannot connect to backend. Make sure it\'s running on http://localhost:8081' });
+        setTimeout(() => setSaveMessage({ type: '', text: '' }), 5000);
+        return;
+      }
+
+      // Build seller data
+      const sellerData = {
+        companyName: sellerProfile.companyName.trim(),
+        industry: sellerProfile.industry.trim(),
+        companySize: parseInt(sellerProfile.companySize),
+        foundedYear: sellerProfile.foundedYear ? parseInt(sellerProfile.foundedYear) : null,
+        headquartersRegion: sellerProfile.headquartersRegion.trim() || null,
+        valuePropositionKeywords: sellerProfile.valuePropositionKeywords
+          .split(",")
+          .map(s => s.trim())
+          .filter(Boolean),
+        targetCustomerSegment: sellerProfile.targetCustomerSegment.trim() || null,
+        priceTier: sellerProfile.priceTier.trim() || null,
+        techStack: sellerProfile.techStack
+          .split(",")
+          .map(s => s.trim())
+          .filter(Boolean),
+        salesModel: sellerProfile.salesModel.trim() || null,
+        targetRegions: sellerProfile.targetRegions
+          .split(",")
+          .map(s => s.trim())
+          .filter(Boolean)
+      };
+
+      await api.setSeller(sellerData);
+      
+      // Also save to localStorage for persistence
+      localStorage.setItem('sellerProfile', JSON.stringify(sellerProfile));
+      
+      setSaveMessage({ type: 'success', text: 'Company profile saved successfully!' });
+      setTimeout(() => setSaveMessage({ type: '', text: '' }), 3000);
+    } catch (error) {
+      console.error("Error saving seller profile:", error);
+      setSaveMessage({ type: 'error', text: `Failed to save company profile: ${error.message}` });
+      setTimeout(() => setSaveMessage({ type: '', text: '' }), 5000);
+    } finally {
+      setSavingSeller(false);
+    }
+  };
+
+  const handleSaveProspectCriteria = async () => {
+    if (!validateProspectCriteria()) {
+      setSaveMessage({ type: 'error', text: 'Please fill in all required prospect criteria fields.' });
+      setTimeout(() => setSaveMessage({ type: '', text: '' }), 3000);
+      return;
+    }
+
+    try {
+      setSavingCriteria(true);
+      
+      // Save to localStorage for persistence
+      localStorage.setItem('prospectCriteria', JSON.stringify(prospectCriteria));
+      
+      setSaveMessage({ type: 'success', text: 'Prospect criteria saved successfully!' });
+      setTimeout(() => setSaveMessage({ type: '', text: '' }), 3000);
+    } catch (error) {
+      console.error("Error saving prospect criteria:", error);
+      setSaveMessage({ type: 'error', text: `Failed to save prospect criteria: ${error.message}` });
+      setTimeout(() => setSaveMessage({ type: '', text: '' }), 5000);
+    } finally {
+      setSavingCriteria(false);
+    }
   };
 
   const handleGenerateLeads = async () => {
@@ -479,8 +589,34 @@ export default function Leads() {
         )}
       </div>
 
+      {/* Save Message */}
+      {saveMessage.text && (
+        <div className={`mb-4 p-4 rounded-lg ${
+          saveMessage.type === 'success' 
+            ? 'bg-green-50 border border-green-200 text-green-800' 
+            : 'bg-red-50 border border-red-200 text-red-800'
+        }`}>
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              {saveMessage.type === 'success' ? (
+                <CheckCircle size={20} />
+              ) : (
+                <XCircle size={20} />
+              )}
+              {saveMessage.text}
+            </span>
+            <button
+              onClick={() => setSaveMessage({ type: '', text: '' })}
+              className="text-gray-500 hover:text-gray-700"
+            >
+              <XCircle size={18} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Seller Profile Section */}
-      <div className="bg-white rounded-lg shadow mb-6">
+      <div className="bg-white rounded-lg shadow mb-6 relative">
         <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-purple-50">
           <div className="flex justify-between items-center">
             <div>
@@ -753,13 +889,36 @@ export default function Leads() {
             </div>
           )}
         </div>
+        
+        {/* Save Button - Bottom Right */}
+        <div className="p-4 flex justify-end">
+          <button
+            onClick={handleSaveSellerProfile}
+            disabled={savingSeller}
+            className="text-xs bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed text-gray-700 px-3 py-1.5 rounded transition shadow-sm hover:shadow flex items-center gap-1.5"
+          >
+            {savingSeller ? (
+              <>
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-600"></div>
+                <span>Saving...</span>
+              </>
+            ) : (
+              <>
+                <CheckCircle size={12} />
+                <span>Save Company Info</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Prospect Criteria Section */}
-      <div className="bg-white rounded-lg shadow mb-6">
+      <div className="bg-white rounded-lg shadow mb-6 relative">
         <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-green-50 to-blue-50">
-          <h2 className="text-xl font-semibold text-gray-800">Prospect Search Criteria</h2>
-          <p className="text-sm text-gray-600 mt-1">Define precise criteria to find your ideal prospects</p>
+          <div>
+            <h2 className="text-xl font-semibold text-gray-800">Prospect Search Criteria</h2>
+            <p className="text-sm text-gray-600 mt-1">Define precise criteria to find your ideal prospects</p>
+          </div>
         </div>
 
         {/* General */}
@@ -1164,6 +1323,27 @@ export default function Leads() {
               </div>
             </div>
           )}
+        </div>
+        
+        {/* Save Button - Bottom Right */}
+        <div className="p-4 flex justify-end">
+          <button
+            onClick={handleSaveProspectCriteria}
+            disabled={savingCriteria}
+            className="text-xs bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed text-gray-700 px-3 py-1.5 rounded transition shadow-sm hover:shadow flex items-center gap-1.5"
+          >
+            {savingCriteria ? (
+              <>
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-600"></div>
+                <span>Saving...</span>
+              </>
+            ) : (
+              <>
+                <CheckCircle size={12} />
+                <span>Save Prospect Criteria</span>
+              </>
+            )}
+          </button>
         </div>
       </div>
 

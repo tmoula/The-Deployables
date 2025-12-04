@@ -11,3 +11,6 @@ public interface CampaignRepository extends JpaRepository<CampaignEntity, Intege
     List<CampaignEntity> findByStatus(String status);
 }
 
+
+
+

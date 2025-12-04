@@ -7,10 +7,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY ai-svc/ ./ai-svc/
+COPY src/ ./src/
 
-# Set working directory to ai-svc
-WORKDIR /app/ai-svc
+# Set working directory to src
+WORKDIR /app/src
 
 # Expose port
 EXPOSE 8090

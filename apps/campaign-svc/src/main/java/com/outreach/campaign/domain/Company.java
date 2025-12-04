@@ -45,3 +45,6 @@ public class Company {
     public void setEnrichmentNotes(String enrichmentNotes) { this.enrichmentNotes = enrichmentNotes; }
 }
 
+
+
+
