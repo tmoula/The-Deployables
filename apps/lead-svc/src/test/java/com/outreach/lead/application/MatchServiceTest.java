@@ -3,20 +3,31 @@ package com.outreach.lead.application;
 import com.outreach.lead.domain.Prospect;
 import com.outreach.lead.domain.ProspectCriteria;
 import com.outreach.lead.domain.SellerProfile;
+import com.outreach.lead.infrastructure.ProspectService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 class MatchServiceTest {
 
     private MatchService matchService;
+    @Mock
+    private ProspectService prospectService;
 
     @BeforeEach
     void setUp() {
-        matchService = new MatchService();
+        MockitoAnnotations.openMocks(this);
+        matchService = new MatchService(prospectService);
+        
+        // Mock prospectService to return empty list by default
+        when(prospectService.searchProspects(any(), anyInt())).thenReturn(List.of());
+        when(prospectService.enrichProspectsWithHooks(anyList(), any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
     // Helper methods to create test objects with correct constructors
@@ -68,9 +79,8 @@ class MatchServiceTest {
     void testListProspects() {
         List<Prospect> prospects = matchService.listProspects();
         assertNotNull(prospects);
-        assertFalse(prospects.isEmpty());
-        // Should have seeded data
-        assertTrue(prospects.size() >= 20);
+        // Now returns empty list as prospects are fetched dynamically
+        assertTrue(prospects.isEmpty());
     }
 
     @Test
@@ -145,6 +155,13 @@ class MatchServiceTest {
         );
         matchService.setSeller(seller);
 
+        // Mock prospects to return
+        List<Prospect> mockProspects = List.of(
+            createProspect("1", "Fintech Co", "fintech.com", "Fintech", 200, List.of("US"), List.of(), List.of())
+        );
+        when(prospectService.searchProspects(any(), anyInt())).thenReturn(mockProspects);
+        when(prospectService.enrichProspectsWithHooks(anyList(), any())).thenReturn(mockProspects);
+
         ProspectCriteria criteria = createCriteria(
             "Fintech",
             null,
@@ -172,6 +189,13 @@ class MatchServiceTest {
             List.of("US")
         );
         matchService.setSeller(seller);
+
+        // Mock prospects within size range
+        List<Prospect> mockProspects = List.of(
+            createProspect("1", "Tech Co", "tech.com", "Technology", 200, List.of("US"), List.of(), List.of())
+        );
+        when(prospectService.searchProspects(any(), anyInt())).thenReturn(mockProspects);
+        when(prospectService.enrichProspectsWithHooks(anyList(), any())).thenReturn(mockProspects);
 
         ProspectCriteria criteria = createCriteria(
             null,
@@ -202,6 +226,13 @@ class MatchServiceTest {
         );
         matchService.setSeller(seller);
 
+        // Mock prospects with US region
+        List<Prospect> mockProspects = List.of(
+            createProspect("1", "Tech Co", "tech.com", "Technology", 200, List.of("US"), List.of(), List.of())
+        );
+        when(prospectService.searchProspects(any(), anyInt())).thenReturn(mockProspects);
+        when(prospectService.enrichProspectsWithHooks(anyList(), any())).thenReturn(mockProspects);
+
         ProspectCriteria criteria = createCriteria(
             null,
             null,
@@ -229,6 +260,13 @@ class MatchServiceTest {
             List.of("US")
         );
         matchService.setSeller(seller);
+
+        // Mock prospects with Java and AWS
+        List<Prospect> mockProspects = List.of(
+            createProspect("1", "Tech Co", "tech.com", "Technology", 200, List.of("US"), List.of("Java", "AWS"), List.of())
+        );
+        when(prospectService.searchProspects(any(), anyInt())).thenReturn(mockProspects);
+        when(prospectService.enrichProspectsWithHooks(anyList(), any())).thenReturn(mockProspects);
 
         ProspectCriteria criteria = createCriteria(
             null,
@@ -259,6 +297,14 @@ class MatchServiceTest {
         );
         matchService.setSeller(seller);
 
+        // Mock multiple prospects
+        List<Prospect> mockProspects = List.of(
+            createProspect("1", "Fintech Co 1", "fintech1.com", "Fintech", 250, List.of("US"), List.of(), List.of("enterprise")),
+            createProspect("2", "Fintech Co 2", "fintech2.com", "Fintech", 200, List.of("US"), List.of(), List.of("B2B"))
+        );
+        when(prospectService.searchProspects(any(), anyInt())).thenReturn(mockProspects);
+        when(prospectService.enrichProspectsWithHooks(anyList(), any())).thenReturn(mockProspects);
+
         ProspectCriteria criteria = createCriteria(
             "Fintech",
             100,
@@ -288,6 +334,18 @@ class MatchServiceTest {
             List.of("US")
         );
         matchService.setSeller(seller);
+
+        // Mock 10 prospects
+        List<Prospect> mockProspects = List.of(
+            createProspect("1", "Tech Co 1", "tech1.com", "Technology", 200, List.of("US"), List.of(), List.of()),
+            createProspect("2", "Tech Co 2", "tech2.com", "Technology", 200, List.of("US"), List.of(), List.of()),
+            createProspect("3", "Tech Co 3", "tech3.com", "Technology", 200, List.of("US"), List.of(), List.of()),
+            createProspect("4", "Tech Co 4", "tech4.com", "Technology", 200, List.of("US"), List.of(), List.of()),
+            createProspect("5", "Tech Co 5", "tech5.com", "Technology", 200, List.of("US"), List.of(), List.of()),
+            createProspect("6", "Tech Co 6", "tech6.com", "Technology", 200, List.of("US"), List.of(), List.of())
+        );
+        when(prospectService.searchProspects(any(), anyInt())).thenReturn(mockProspects);
+        when(prospectService.enrichProspectsWithHooks(anyList(), any())).thenReturn(mockProspects);
 
         ProspectCriteria criteria = createCriteria(
             null,
@@ -324,6 +382,10 @@ class MatchServiceTest {
             List.of("payment")
         );
 
+        // Mock the prospect
+        when(prospectService.searchProspects(any(), anyInt())).thenReturn(List.of(fintechProspect));
+        when(prospectService.enrichProspectsWithHooks(anyList(), any())).thenReturn(List.of(fintechProspect));
+
         ProspectCriteria criteria = createCriteria(
             "Fintech",
             null,
@@ -349,6 +411,13 @@ class MatchServiceTest {
             List.of("US", "EU")
         );
         matchService.setSeller(seller);
+
+        // Mock prospects with US/EU regions
+        List<Prospect> mockProspects = List.of(
+            createProspect("1", "Tech Co", "tech.com", "Technology", 200, List.of("US", "EU"), List.of(), List.of())
+        );
+        when(prospectService.searchProspects(any(), anyInt())).thenReturn(mockProspects);
+        when(prospectService.enrichProspectsWithHooks(anyList(), any())).thenReturn(mockProspects);
 
         ProspectCriteria criteria = createCriteria(
             null,

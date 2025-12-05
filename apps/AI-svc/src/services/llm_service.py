@@ -1,7 +1,7 @@
 """
 LLM Service - Handles communication with language models
-Primary: OpenAI (ChatGPT)
-Fallback: Gemini
+Primary: Gemini
+Fallback: OpenAI (ChatGPT)
 """
 import os
 import logging
@@ -18,33 +18,33 @@ class LLMService:
     """Service for interacting with language models"""
     
     def __init__(self):
-        # OpenAI configuration (PRIMARY)
+        # Gemini API configuration (PRIMARY)
+        self.gemini_api_key = os.getenv("GEMINI_API_KEY")
+        self.gemini_api_url = os.getenv("GEMINI_API_URL", "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent")
+        
+        # OpenAI configuration (FALLBACK)
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         self.openai_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         self.openai_base_url = os.getenv("OPENAI_BASE_URL", None)
         
-        # Gemini API configuration (FALLBACK)
-        self.gemini_api_key = os.getenv("GEMINI_API_KEY")
-        self.gemini_api_url = os.getenv("GEMINI_API_URL", "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent")
-        
-        # Initialize OpenAI client if API key is available
+        # Initialize OpenAI client if API key is available (for fallback)
         self.openai_client = None
         if self.openai_api_key:
             try:
                 self.openai_client = OpenAI(api_key=self.openai_api_key, base_url=self.openai_base_url)
-                logger.info(f"OpenAI client initialized with model {self.openai_model} (PRIMARY)")
+                logger.info(f"OpenAI client initialized with model {self.openai_model} (FALLBACK)")
             except Exception as e:
                 logger.warning(f"Failed to initialize OpenAI client: {str(e)}")
         
-        # Log fallback availability
+        # Log primary availability
         if self.gemini_api_key:
-            logger.info("Gemini API configured (FALLBACK)")
+            logger.info("Gemini API configured (PRIMARY)")
         else:
-            logger.warning("No Gemini API key found. Fallback will not be available.")
+            logger.warning("No Gemini API key found. Primary LLM will not be available.")
         
         # Warn if no providers available
-        if not self.openai_client and not self.gemini_api_key:
-            logger.warning("No API keys found. Using mock responses. Set OPENAI_API_KEY or GEMINI_API_KEY")
+        if not self.gemini_api_key and not self.openai_client:
+            logger.warning("No API keys found. Using mock responses. Set GEMINI_API_KEY or OPENAI_API_KEY")
     
     async def generate_text(
         self,
@@ -55,7 +55,7 @@ class LLMService:
     ) -> str:
         """
         Generate text using the configured LLM.
-        Tries OpenAI first, falls back to Gemini if OpenAI fails.
+        Tries Gemini first (PRIMARY), falls back to OpenAI if Gemini fails.
         
         Args:
             prompt: User prompt
@@ -66,28 +66,28 @@ class LLMService:
         Returns:
             Generated text
         """
-        # Priority: OpenAI > Gemini > Mock
+        # Priority: Gemini (PRIMARY) > OpenAI (FALLBACK) > Mock
         
-        # Try OpenAI first (PRIMARY)
-        if self.openai_client:
-            try:
-                logger.debug("Attempting to generate text with OpenAI (PRIMARY)")
-                result = await self._generate_with_openai(prompt, system_prompt, temperature, max_tokens)
-                logger.info("Successfully generated text with OpenAI")
-                return result
-            except Exception as e:
-                logger.warning(f"OpenAI API failed: {str(e)}. Attempting fallback to Gemini...")
-                # Fall through to Gemini fallback
-        
-        # Fallback to Gemini
+        # Try Gemini first (PRIMARY)
         if self.gemini_api_key:
             try:
-                logger.info("Attempting to generate text with Gemini (FALLBACK)")
+                logger.debug("Attempting to generate text with Gemini (PRIMARY)")
                 result = await self._generate_with_gemini(prompt, system_prompt, temperature, max_tokens)
-                logger.info("Successfully generated text with Gemini (fallback)")
+                logger.info("Successfully generated text with Gemini")
                 return result
             except Exception as e:
-                logger.error(f"Gemini API also failed: {str(e)}")
+                logger.warning(f"Gemini API failed: {str(e)}. Attempting fallback to OpenAI...")
+                # Fall through to OpenAI fallback
+        
+        # Fallback to OpenAI
+        if self.openai_client:
+            try:
+                logger.info("Attempting to generate text with OpenAI (FALLBACK)")
+                result = await self._generate_with_openai(prompt, system_prompt, temperature, max_tokens)
+                logger.info("Successfully generated text with OpenAI (fallback)")
+                return result
+            except Exception as e:
+                logger.error(f"OpenAI API also failed: {str(e)}")
                 # Fall through to mock
         
         # Last resort: Mock response
@@ -208,15 +208,46 @@ class LLMService:
                 logger.info(f"Number of parts: {len(parts)}")
                 
                 # Handle MAX_TOKENS case - there might still be partial content
-                if not parts and finish_reason == "MAX_TOKENS":
-                    logger.warning(f"Gemini hit MAX_TOKENS but no parts found. Trying to increase max_tokens or simplify prompt.")
+                if finish_reason == "MAX_TOKENS":
+                    logger.warning(f"=== GEMINI MAX_TOKENS DETECTED ===")
+                    logger.warning(f"Full candidate structure: {str(candidate)[:1000]}")
+                    logger.warning(f"Content structure: {str(content)[:500]}")
+                    logger.warning(f"Parts count: {len(parts)}, Parts content: {str(parts)[:500]}")
+                    
                     # Try to get any text that might be in the response
+                    if parts:
+                        # There is partial content, use it
+                        text = parts[0].get("text", "")
+                        if text:
+                            logger.info(f"✅ Using partial content from MAX_TOKENS response: {text[:200]}")
+                            return text.strip()
+                        else:
+                            logger.warning(f"Parts exist but no 'text' key. Parts[0] keys: {list(parts[0].keys()) if parts[0] else 'empty'}")
+                    
+                    # Try to get text directly from content
                     if "text" in content:
                         generated_text = content.get("text", "")
                         if generated_text:
-                            logger.info(f"Found text in content directly: {generated_text[:200]}")
+                            logger.info(f"✅ Found text in content directly: {generated_text[:200]}")
                             return generated_text.strip()
-                    raise Exception("Gemini API hit MAX_TOKENS with no content. Try reducing prompt length or increasing max_tokens.")
+                    
+                    # Log the full response for debugging
+                    logger.error(f"=== MAX_TOKENS DEBUG INFO ===")
+                    logger.error(f"Full result keys: {list(result.keys())}")
+                    logger.error(f"Candidate keys: {list(candidate.keys())}")
+                    logger.error(f"Content keys: {list(content.keys()) if content else 'no content'}")
+                    logger.error(f"Parts structure: {str(parts)[:1000]}")
+                    
+                    # If no parts and no text, try increasing max_tokens (sometimes Gemini needs more)
+                    logger.warning("MAX_TOKENS with no content. Trying with increased max_tokens...")
+                    if max_tokens < 4000:
+                        # Try with more tokens
+                        new_max_tokens = min(4000, max_tokens * 2)
+                        logger.info(f"Retrying with max_tokens={new_max_tokens}")
+                        return await self._generate_with_gemini(prompt, system_prompt, temperature, new_max_tokens)
+                    
+                    # If already at high tokens, raise exception to trigger fallback
+                    raise Exception(f"Gemini API hit MAX_TOKENS with no content. Response structure: candidate={bool(candidate)}, content={bool(content)}, parts={len(parts)}")
                 
                 if parts:
                     logger.info(f"First part keys: {list(parts[0].keys()) if parts[0] else 'empty part'}")

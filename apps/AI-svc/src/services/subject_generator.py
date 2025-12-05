@@ -3,7 +3,7 @@ Subject Generator Service - Generates personalized email subject lines using AI
 """
 import logging
 from typing import Optional, Any
-from models import CompanyInfo, ContactInfo, EmailRequirements
+from src.models import CompanyInfo, ContactInfo, EmailRequirements
 
 logger = logging.getLogger(__name__)
 

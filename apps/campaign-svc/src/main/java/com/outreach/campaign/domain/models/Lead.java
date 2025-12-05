@@ -1,4 +1,4 @@
-package com.outreach.campaign.domain;
+package com.outreach.campaign.domain.models;
 
 public record Lead(
         String id,

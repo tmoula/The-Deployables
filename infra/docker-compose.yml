@@ -69,7 +69,7 @@ services:
   lead-svc:
     build: ../apps/lead-svc
     ports:
-      - "8081:8081"
+      - "8084:8081"
     depends_on:
       - postgres
       - rabbitmq
@@ -83,7 +83,7 @@ services:
   campaign-svc:
     build: ../apps/campaign-svc
     ports:
-      - "8082:8082"
+      - "8081:8081"
     depends_on:
       - postgres
       - rabbitmq

@@ -1,175 +1,225 @@
--- Core database schema for the AI B2B Cold Outreach Agent
+-- Clean Production Database Schema
+-- AI B2B Cold Outreach Agent
 -- Database: PostgreSQL
--- Updated to reflect new relationship structure
 
--- ================
--- USERS
--- ================
+-- ============================================
+-- 1. CORE: Users & Sender Identity
+-- ============================================
+
+-- USERS - One per account
 CREATE TABLE users (
     id              SERIAL PRIMARY KEY,
     email           VARCHAR(200) UNIQUE NOT NULL,
     password_hash   TEXT NOT NULL,
+    plan            VARCHAR(50) DEFAULT 'free',  -- free, pro, enterprise
     created_at      TIMESTAMP DEFAULT NOW()
 );
 
--- ================
--- COMPANY PROFILES (User's own company info)
--- Each user can save their company information
--- ================
-CREATE TABLE company_profiles (
+CREATE INDEX idx_users_email ON users(email);
+
+-- SENDER_COMPANIES - User's own company (who they're sending from)
+CREATE TABLE sender_companies (
     id              SERIAL PRIMARY KEY,
     user_id         INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name            VARCHAR(200) NOT NULL,
     website         VARCHAR(300),
     industry        VARCHAR(150),
     description     TEXT,
+    logo_url        VARCHAR(500),
     created_at      TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_company_profiles_user ON company_profiles(user_id);
+CREATE INDEX idx_sender_companies_user ON sender_companies(user_id);
 
--- ================
--- ICP PROFILES (Ideal Customer Profile)
--- Who they want to target - prospect client info
--- ================
-CREATE TABLE icp_profiles (
-    icp_id              SERIAL PRIMARY KEY,
-    user_id             INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    name                VARCHAR(150) NOT NULL,        -- e.g. "US SaaS Founders"
-    target_industry     VARCHAR(150),
-    target_titles       TEXT,                         -- e.g. "CTO, VP Engineering, Head of Ops"
-    company_size_min    INT,
-    company_size_max    INT,
-    geo_region          VARCHAR(200),
-    extra_notes         TEXT,
-    created_at          TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX idx_icp_user ON icp_profiles(user_id);
-
--- ================
--- LEAD BATCHES (Each "Generate" click)
--- Every time the user clicks Generate, you create a batch
--- ================
-CREATE TABLE lead_batches (
+-- MAILBOXES - Email inboxes used to send campaigns
+CREATE TABLE mailboxes (
     id              SERIAL PRIMARY KEY,
     user_id         INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    icp_id          INT REFERENCES icp_profiles(icp_id) ON DELETE SET NULL,
-    source          VARCHAR(100) DEFAULT 'manual',    -- e.g. "linkedin", "apollo", "scraper"
-    status          VARCHAR(50) DEFAULT 'pending',   -- "pending", "running", "ready", "failed"
-    total_leads     INT DEFAULT 0,
+    email_address   VARCHAR(255) NOT NULL,
+    provider        VARCHAR(50) NOT NULL,  -- gmail, outlook, smtp
+    display_name    VARCHAR(255),
+    is_verified     BOOLEAN DEFAULT FALSE,
+    warmup_status   VARCHAR(50) DEFAULT 'none',  -- none, running, paused
     created_at      TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_mailboxes_user ON mailboxes(user_id);
+CREATE INDEX idx_mailboxes_email ON mailboxes(email_address);
+
+-- ============================================
+-- 2. TARGETING: ICP Profiles
+-- ============================================
+
+-- ICP_PROFILES - Who they want to target (prospect "persona")
+CREATE TABLE icp_profiles (
+    id              SERIAL PRIMARY KEY,
+    user_id         INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name            VARCHAR(150) NOT NULL,  -- e.g. "US B2B SaaS Founders"
+    target_industry VARCHAR(150),
+    target_titles   TEXT,  -- e.g. "CEO, Founder, VP Sales"
+    company_size_min INT,
+    company_size_max INT,
+    geo_region      VARCHAR(200),
+    pain_points     TEXT,
+    created_at      TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_icp_profiles_user ON icp_profiles(user_id);
+
+-- ============================================
+-- 3. LEAD GENERATION: Batches & Leads
+-- ============================================
+
+-- LEAD_BATCHES - One row per Generate click
+CREATE TABLE lead_batches (
+    id                  SERIAL PRIMARY KEY,
+    user_id             INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    icp_id              INT REFERENCES icp_profiles(id) ON DELETE SET NULL,
+    source              VARCHAR(50) NOT NULL,  -- ai_scraper, uploaded_csv, manual
+    status              VARCHAR(50) DEFAULT 'pending',  -- pending, running, ready, failed
+    requested_lead_count INT,
+    total_leads         INT DEFAULT 0,
+    error_message       TEXT,
+    created_at          TIMESTAMP DEFAULT NOW()
 );
 
 CREATE INDEX idx_lead_batches_user ON lead_batches(user_id);
 CREATE INDEX idx_lead_batches_icp ON lead_batches(icp_id);
 CREATE INDEX idx_lead_batches_status ON lead_batches(status);
 
--- ================
--- LEADS (The actual people/companies you found)
--- All leads are tied to the user and the batch that created them
--- ================
+-- LEADS - Actual prospects found (or imported from CSV)
 CREATE TABLE leads (
-    id              SERIAL PRIMARY KEY,
-    batch_id        INT REFERENCES lead_batches(id) ON DELETE CASCADE,
-    user_id         INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    first_name      VARCHAR(100),
-    last_name       VARCHAR(100),
-    company_name    VARCHAR(200),
-    company_website VARCHAR(300),
-    job_title       VARCHAR(200),
-    email           VARCHAR(250),
-    linkedin_url    VARCHAR(400),
-    country         VARCHAR(100),
-    created_at      TIMESTAMP DEFAULT NOW()
+    id                  SERIAL PRIMARY KEY,
+    user_id             INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    batch_id            INT REFERENCES lead_batches(id) ON DELETE SET NULL,
+    first_name          VARCHAR(100),
+    last_name           VARCHAR(100),
+    job_title           VARCHAR(200),
+    company_name        VARCHAR(200),
+    company_website     VARCHAR(300),
+    company_linkedin    VARCHAR(400),
+    linkedin_url        VARCHAR(400),
+    email               VARCHAR(250),
+    country             VARCHAR(100),
+    custom_notes        TEXT,  -- for personalization
+    created_at          TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_leads_batch ON leads(batch_id);
 CREATE INDEX idx_leads_user ON leads(user_id);
+CREATE INDEX idx_leads_batch ON leads(batch_id);
 CREATE INDEX idx_leads_email ON leads(email);
 CREATE INDEX idx_leads_company ON leads(company_name);
 
--- ================
--- CAMPAIGNS (Email outreach campaigns)
--- In the simple version, 1 campaign uses one batch of leads
--- ================
+-- ============================================
+-- 4. CAMPAIGNS & SEQUENCES
+-- ============================================
+
+-- CAMPAIGNS - Top-level campaign
 CREATE TABLE campaigns (
-    campaign_id         SERIAL PRIMARY KEY,
-    user_id             INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    name                VARCHAR(200) NOT NULL,        -- "Q4 Outreach to Robotics CTOs"
-    from_mailbox_id     BIGINT REFERENCES mailboxes(id) ON DELETE SET NULL,
-    lead_batch_id       INT REFERENCES lead_batches(id) ON DELETE SET NULL,
-    status              VARCHAR(50) DEFAULT 'draft',  -- draft | running | paused | completed
-    created_at          TIMESTAMP DEFAULT NOW()
+    id              SERIAL PRIMARY KEY,
+    user_id         INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name            VARCHAR(200) NOT NULL,
+    icp_id          INT REFERENCES icp_profiles(id) ON DELETE SET NULL,
+    lead_batch_id   INT REFERENCES lead_batches(id) ON DELETE SET NULL,
+    mailbox_id      INT REFERENCES mailboxes(id) ON DELETE SET NULL,
+    status          VARCHAR(50) DEFAULT 'draft',  -- draft, scheduled, running, paused, completed
+    start_at        TIMESTAMP,
+    created_at      TIMESTAMP DEFAULT NOW()
 );
 
 CREATE INDEX idx_campaigns_user ON campaigns(user_id);
+CREATE INDEX idx_campaigns_icp ON campaigns(icp_id);
 CREATE INDEX idx_campaigns_lead_batch ON campaigns(lead_batch_id);
+CREATE INDEX idx_campaigns_mailbox ON campaigns(mailbox_id);
+CREATE INDEX idx_campaigns_status ON campaigns(status);
 
--- ================
--- MAILBOXES (Gmail account storage)
--- ================
-CREATE TABLE mailboxes (
-    id                  BIGSERIAL PRIMARY KEY,
-    user_id             BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    email               VARCHAR(255) NOT NULL,
-    display_name        VARCHAR(255),
-    status              VARCHAR(50) NOT NULL DEFAULT 'ACTIVE',
-    encrypted_password  TEXT NOT NULL,
-    created_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+-- CAMPAIGN_STEPS - The sequence: Step 1, follow-up 1, follow-up 2, etc.
+CREATE TABLE campaign_steps (
+    id              SERIAL PRIMARY KEY,
+    campaign_id     INT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+    step_order      INT NOT NULL,  -- 1, 2, 3...
+    delay_hours     INT DEFAULT 0,  -- send this X hours after previous
+    subject_template TEXT NOT NULL,
+    body_template   TEXT NOT NULL,  -- with variables like {{first_name}}, {{company_name}}
+    created_at      TIMESTAMP DEFAULT NOW(),
+    UNIQUE (campaign_id, step_order)
 );
 
-CREATE INDEX idx_mailboxes_user_id ON mailboxes(user_id);
+CREATE INDEX idx_campaign_steps_campaign ON campaign_steps(campaign_id);
 
--- ================
--- EMAIL SEQUENCES (step 1, step 2, step 3 follow-ups...)
--- ================
-CREATE TABLE email_sequences (
-    sequence_id             SERIAL PRIMARY KEY,
-    campaign_id             INT NOT NULL REFERENCES campaigns(campaign_id) ON DELETE CASCADE,
-    step_number             INT NOT NULL,                -- 1, 2, 3...
-    delay_days_after_prev   INT DEFAULT 0,               -- wait time before sending this step
-    subject_template        TEXT NOT NULL,
-    body_template           TEXT NOT NULL,
-    created_at              TIMESTAMP DEFAULT NOW(),
-    UNIQUE (campaign_id, step_number)
+-- CAMPAIGN_LEADS - Many-to-many: attach specific leads to campaigns (optional but powerful)
+CREATE TABLE campaign_leads (
+    id              SERIAL PRIMARY KEY,
+    campaign_id     INT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+    lead_id         INT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+    status          VARCHAR(50) DEFAULT 'queued',  -- queued, in_progress, completed, unsubscribed, bounced
+    created_at      TIMESTAMP DEFAULT NOW(),
+    UNIQUE (campaign_id, lead_id)
 );
 
--- ================
--- EMAILS (actual sends / tracking)
--- Each row is an email that was or will be sent to a specific lead
--- ================
-CREATE TABLE emails (
-    email_id            SERIAL PRIMARY KEY,
-    campaign_id         INT NOT NULL REFERENCES campaigns(campaign_id) ON DELETE CASCADE,
-    lead_id             INT REFERENCES leads(id) ON DELETE CASCADE,
-    sequence_step       INT,                     -- which step_number this came from
-    final_subject       TEXT NOT NULL,
-    final_body          TEXT NOT NULL,
-    scheduled_at        TIMESTAMP,
+CREATE INDEX idx_campaign_leads_campaign ON campaign_leads(campaign_id);
+CREATE INDEX idx_campaign_leads_lead ON campaign_leads(lead_id);
+CREATE INDEX idx_campaign_leads_status ON campaign_leads(status);
+
+-- ============================================
+-- 5. SENDING & TRACKING
+-- ============================================
+
+-- SENT_EMAILS - Each actual email that got queued/sent
+CREATE TABLE sent_emails (
+    id                  SERIAL PRIMARY KEY,
+    campaign_id         INT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+    campaign_step_id    INT REFERENCES campaign_steps(id) ON DELETE SET NULL,
+    lead_id             INT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+    mailbox_id          INT REFERENCES mailboxes(id) ON DELETE SET NULL,
+    to_email            VARCHAR(250) NOT NULL,
+    subject             TEXT NOT NULL,
+    body                TEXT NOT NULL,
+    status              VARCHAR(50) DEFAULT 'queued',  -- queued, sent, failed
+    provider_message_id VARCHAR(255),  -- for SendGrid/Gmail/etc
     sent_at             TIMESTAMP,
-    opened_at           TIMESTAMP,
-    replied_at          TIMESTAMP,
-    status              VARCHAR(50) DEFAULT 'scheduled', -- scheduled|sent|bounced|opened|replied
     created_at          TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_emails_campaign ON emails(campaign_id);
-CREATE INDEX idx_emails_lead ON emails(lead_id);
-CREATE INDEX idx_emails_status ON emails(status);
+CREATE INDEX idx_sent_emails_campaign ON sent_emails(campaign_id);
+CREATE INDEX idx_sent_emails_campaign_step ON sent_emails(campaign_step_id);
+CREATE INDEX idx_sent_emails_lead ON sent_emails(lead_id);
+CREATE INDEX idx_sent_emails_mailbox ON sent_emails(mailbox_id);
+CREATE INDEX idx_sent_emails_status ON sent_emails(status);
+CREATE INDEX idx_sent_emails_to_email ON sent_emails(to_email);
 
--- ================
+-- EMAIL_EVENTS - Opens, clicks, replies, bounces
+CREATE TABLE email_events (
+    id              SERIAL PRIMARY KEY,
+    sent_email_id   INT NOT NULL REFERENCES sent_emails(id) ON DELETE CASCADE,
+    event_type      VARCHAR(50) NOT NULL,  -- opened, clicked, replied, bounced, unsubscribed
+    event_at        TIMESTAMP DEFAULT NOW(),
+    meta            JSONB  -- ip, user_agent, link_url, etc.
+);
+
+CREATE INDEX idx_email_events_sent_email ON email_events(sent_email_id);
+CREATE INDEX idx_email_events_type ON email_events(event_type);
+CREATE INDEX idx_email_events_at ON email_events(event_at);
+
+-- ============================================
 -- RELATIONSHIP SUMMARY:
--- ================
--- users (1) → (many) company_profiles
+-- ============================================
+-- users (1) → (many) sender_companies
+-- users (1) → (many) mailboxes
 -- users (1) → (many) icp_profiles
 -- users (1) → (many) lead_batches
 -- users (1) → (many) leads
 -- users (1) → (many) campaigns
 -- icp_profiles (1) → (many) lead_batches
+-- icp_profiles (1) → (many) campaigns
 -- lead_batches (1) → (many) leads
--- lead_batches (1) → (many) campaigns (via lead_batch_id)
--- campaigns (1) → (many) email_sequences
--- campaigns (1) → (many) emails
--- leads (1) → (many) emails
+-- lead_batches (1) → (many) campaigns
+-- campaigns (1) → (many) campaign_steps
+-- campaigns (1) → (many) campaign_leads
+-- campaigns (1) → (many) sent_emails
+-- leads (1) → (many) campaign_leads
+-- leads (1) → (many) sent_emails
+-- mailboxes (1) → (many) campaigns
+-- mailboxes (1) → (many) sent_emails
+-- campaign_steps (1) → (many) sent_emails
+-- sent_emails (1) → (many) email_events

@@ -6,7 +6,7 @@ import logging
 from typing import Dict, Any, Optional
 import asyncio
 
-from services.llm_service import LLMService
+from src.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
 

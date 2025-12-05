@@ -14,14 +14,26 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 import uvicorn
+from dotenv import load_dotenv
+from pathlib import Path
 
-from services.rabbitmq_adapter import RabbitMQAdapter
-from services.email_generator import EmailGenerator
-from services.ai_adapter import AIAdapter
-from services.llm_service import LLMService
-from services.database_service import DatabaseService
-from services.prospect_service import ProspectService
-from models import (
+# Load environment variables from .env file
+# Look for .env in the parent directory (AI-svc root)
+# Try multiple paths to handle different execution contexts
+base_dir = Path(__file__).parent.parent
+env_path = base_dir / '.env'
+if not env_path.exists():
+    # Fallback: try current directory
+    env_path = Path('.env')
+load_dotenv(dotenv_path=env_path, override=True)
+
+from src.services.rabbitmq_adapter import RabbitMQAdapter
+from src.services.email_generator import EmailGenerator
+from src.services.ai_adapter import AIAdapter
+from src.services.llm_service import LLMService
+from src.services.database_service import DatabaseService
+from src.services.prospect_service import ProspectService
+from src.models import (
     EmailGenerationRequest, 
     EmailGenerationResponse,
     GeneralAIRequest,
@@ -65,15 +77,51 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Start RabbitMQ consumer on application startup
+@app.on_event("startup")
+async def startup_event():
+    """Start RabbitMQ consumer thread when FastAPI app starts"""
+    logger.info("=== FastAPI Startup Event: Initializing RabbitMQ Adapter ===")
+    logger.info(f"RabbitMQ Host: {adapter.rabbitmq_host}:{adapter.rabbitmq_port}")
+    logger.info(f"Request Queue: {adapter.request_queue}")
+    
+    consumer_thread = Thread(target=run_rabbitmq_consumer, daemon=True)
+    consumer_thread.start()
+    logger.info(f"RabbitMQ consumer thread started. Thread ID: {consumer_thread.ident}, Alive: {consumer_thread.is_alive()}")
+    
+    # Give the thread a moment to start connecting
+    import time
+    time.sleep(1)
+    logger.info(f"After 1 second - Thread alive: {consumer_thread.is_alive()}")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on application shutdown"""
+    logger.info("FastAPI shutdown event: Disconnecting RabbitMQ adapter...")
+    adapter.disconnect()
+    db_service.close()
+
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    is_connected = adapter.connection is not None and not adapter.connection.is_closed if adapter.connection else False
+    # Check if RabbitMQ connection is established
+    is_connected = False
+    try:
+        if adapter.connection is not None:
+            is_connected = not adapter.connection.is_closed
+        # Also check if consumer is running
+        is_consuming = adapter.is_consuming if hasattr(adapter, 'is_consuming') else False
+    except Exception as e:
+        logger.warning(f"Error checking RabbitMQ connection: {e}")
+        is_connected = False
+        is_consuming = False
+    
     return {
         "status": "healthy" if is_connected else "disconnected",
         "service": "ai-email-generation-service",
         "rabbitmq_connected": is_connected,
+        "rabbitmq_consuming": is_consuming,
         "request_queue": adapter.request_queue,
         "response_queue": adapter.response_queue
     }
@@ -214,13 +262,24 @@ async def discover_prospects(request: ProspectDiscoveryRequest):
     the provided search criteria.
     """
     try:
-        logger.info(f"Received prospect discovery request via API")
+        logger.info(f"=== PROSPECT DISCOVERY REQUEST ===")
+        logger.info(f"Criteria: industry={request.criteria.industry}, min_size={request.criteria.min_size}, max_size={request.criteria.max_size}")
+        logger.info(f"Requested max_companies: {request.max_companies}")
+        
+        # Enforce maximum of 5 companies
+        max_companies = min(request.max_companies, 5)
+        if request.max_companies > 5:
+            logger.warning(f"Requested {request.max_companies} companies, limiting to 5")
         
         # Generate matching companies using prospect service
+        logger.info(f"Calling prospect_service.generate_matching_companies with max_companies={max_companies}")
         company_domains = await prospect_service.generate_matching_companies(
             criteria=request.criteria,
-            max_companies=request.max_companies
+            max_companies=max_companies
         )
+        
+        logger.info(f"=== PROSPECT DISCOVERY RESULT ===")
+        logger.info(f"Generated {len(company_domains)} company domains: {company_domains}")
         
         return ProspectDiscoveryResponse(
             success=True,
@@ -282,6 +341,9 @@ def signal_handler(sig, frame):
 def run_rabbitmq_consumer():
     """Run RabbitMQ consumer in a separate thread"""
     try:
+        logger.info("=== Starting RabbitMQ consumer thread ===")
+        logger.info(f"Connecting to RabbitMQ at {adapter.rabbitmq_host}:{adapter.rabbitmq_port}")
+        logger.info(f"Will listen on queue: {adapter.request_queue}")
         adapter.start_consuming()
     except Exception as e:
         logger.error(f"Error in RabbitMQ consumer: {str(e)}", exc_info=True)
@@ -293,11 +355,8 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
-    # Start RabbitMQ consumer in a separate thread
-    consumer_thread = Thread(target=run_rabbitmq_consumer, daemon=True)
-    consumer_thread.start()
-    
     # Start FastAPI server for API endpoints and health checks
+    # Note: RabbitMQ consumer is started via @app.on_event("startup")
     port = int(os.getenv("PORT", "8090"))
     logger.info(f"Starting AI Service API server on port {port}")
     logger.info("AI Service is running. Listening for RabbitMQ messages and API requests...")

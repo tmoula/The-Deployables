@@ -4,7 +4,7 @@ Prospect Service - Handles prospect discovery and personalization using AI
 import logging
 import re
 from typing import List, Optional
-from models import ProspectCriteria, SellerProfile, ProspectInfo
+from src.models import ProspectCriteria, SellerProfile, ProspectInfo
 
 logger = logging.getLogger(__name__)
 
@@ -30,20 +30,33 @@ class ProspectService:
             # Build prompt for company discovery
             prompt = self._build_company_discovery_prompt(criteria, max_companies)
             
-            logger.info(f"Generating {max_companies} matching companies using AI")
+            logger.info(f"=== PROSPECT SERVICE: Generating {max_companies} matching companies ===")
+            logger.info(f"Prompt length: {len(prompt)} characters")
+            logger.info(f"Prompt preview: {prompt[:200]}...")
             
             # Call AI service
-            generated_text = await self.llm_service.generate_text(
-                prompt=prompt,
-                system_prompt="You are a business intelligence assistant that helps find companies matching specific criteria.",
-                temperature=0.7,
-                max_tokens=2000  # Increased to handle longer prompts with more criteria
-            )
+            # Increased to 2000 tokens to avoid MAX_TOKENS issues
+            logger.info(f"Calling LLM service with max_tokens=2000")
+            try:
+                generated_text = await self.llm_service.generate_text(
+                    prompt=prompt,
+                    system_prompt="Find company domains matching criteria.",
+                    temperature=0.7,
+                    max_tokens=2000  # Increased to avoid MAX_TOKENS
+                )
+                logger.info(f"LLM raw output length: {len(generated_text) if generated_text else 0} characters")
+                logger.info(f"LLM raw output preview: {generated_text[:500] if generated_text else 'EMPTY'}")
+            except Exception as llm_error:
+                logger.exception(f"LLM call failed: {llm_error}")
+                logger.error(f"LLM error type: {type(llm_error).__name__}")
+                raise  # Re-raise so we can see the error in the endpoint
             
             # Parse company domains from response
+            logger.info(f"Parsing domains from LLM output...")
             domains = self._parse_company_domains(generated_text, max_companies)
             
-            logger.info(f"Generated {len(domains)} company domains")
+            logger.info(f"=== PROSPECT SERVICE RESULT ===")
+            logger.info(f"Generated {len(domains)} company domains: {domains}")
             return domains
             
         except Exception as e:
@@ -52,45 +65,18 @@ class ProspectService:
             return []
     
     def _build_company_discovery_prompt(self, criteria: ProspectCriteria, max_companies: int) -> str:
-        """Build prompt for company discovery"""
+        """Build prompt for company discovery - simplified for Gemini"""
         prompt_parts = []
-        prompt_parts.append(f"You are a business intelligence assistant. Based on the following criteria, provide exactly {max_companies} company domain names (just the domain, like example.com) that match these criteria. Make sure to provide exactly {max_companies} companies:\n\n")
-        prompt_parts.append("Criteria:\n")
-        
-        if criteria.industry:
-            prompt_parts.append(f"- Industry: {criteria.industry}\n")
+        prompt_parts.append(f"List {max_companies} real {criteria.industry or 'technology'} company domain names.\n")
         
         if criteria.min_size or criteria.max_size:
-            prompt_parts.append("- Company Size: ")
-            if criteria.min_size:
-                prompt_parts.append(str(criteria.min_size))
-            prompt_parts.append(" - ")
-            if criteria.max_size:
-                prompt_parts.append(str(criteria.max_size))
-            prompt_parts.append(" employees\n")
+            size_str = f"{criteria.min_size or ''}-{criteria.max_size or ''}"
+            prompt_parts.append(f"Company size: {size_str} employees.\n")
         
-        if criteria.hq_country:
-            prompt_parts.append(f"- Country: {criteria.hq_country}\n")
-        elif criteria.headquarters_region:
-            prompt_parts.append(f"- Region: {criteria.headquarters_region}\n")
-        
-        if criteria.regions:
-            prompt_parts.append(f"- Target Regions: {', '.join(criteria.regions)}\n")
-        
-        if criteria.tech_used:
-            prompt_parts.append(f"- Technology Used: {', '.join(criteria.tech_used)}\n")
-        
-        if criteria.keyword_mentions:
-            prompt_parts.append(f"- Keywords: {', '.join(criteria.keyword_mentions)}\n")
-        
-        prompt_parts.append("\n")
-        prompt_parts.append("Return ONLY the domain names, one per line, in this exact format:\n")
-        prompt_parts.append("domain1.com\n")
-        prompt_parts.append("domain2.com\n")
-        prompt_parts.append("domain3.com\n")
-        prompt_parts.append("...\n")
-        prompt_parts.append("\n")
-        prompt_parts.append(f"Provide at least {max_companies} company domains. Do not include any explanations, just the domain names.")
+        prompt_parts.append(f"\nReturn exactly {max_companies} domains, one per line:\n")
+        prompt_parts.append("example.com\n")
+        prompt_parts.append("another.com\n")
+        prompt_parts.append("\nOnly domain names, no explanations.")
         
         return "".join(prompt_parts)
     

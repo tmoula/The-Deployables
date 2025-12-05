@@ -9,9 +9,7 @@ export default function Leads() {
   const [criteriaErrors, setCriteriaErrors] = useState({});
   const [hasSearched, setHasSearched] = useState(false);
   const [backendStatus, setBackendStatus] = useState({ connected: false, checking: true });
-  const [savingSeller, setSavingSeller] = useState(false);
-  const [savingCriteria, setSavingCriteria] = useState(false);
-  const [saveMessage, setSaveMessage] = useState({ type: '', text: '' });
+  // Removed savingSeller, savingCriteria, saveMessage - no longer needed
   
   // Collapsible sections state - All expanded by default
   const [expandedSellerSections, setExpandedSellerSections] = useState({
@@ -225,89 +223,7 @@ export default function Leads() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSaveSellerProfile = async () => {
-    if (!validateSellerProfile()) {
-      setSaveMessage({ type: 'error', text: 'Please fill in all required company information fields.' });
-      setTimeout(() => setSaveMessage({ type: '', text: '' }), 3000);
-      return;
-    }
-
-    try {
-      setSavingSeller(true);
-      
-      // Check backend connection
-      try {
-        await api.checkHealth();
-      } catch (healthError) {
-        setSavingSeller(false);
-        setSaveMessage({ type: 'error', text: 'Cannot connect to backend. Make sure it\'s running on http://localhost:8081' });
-        setTimeout(() => setSaveMessage({ type: '', text: '' }), 5000);
-        return;
-      }
-
-      // Build seller data
-      const sellerData = {
-        companyName: sellerProfile.companyName.trim(),
-        industry: sellerProfile.industry.trim(),
-        companySize: parseInt(sellerProfile.companySize),
-        foundedYear: sellerProfile.foundedYear ? parseInt(sellerProfile.foundedYear) : null,
-        headquartersRegion: sellerProfile.headquartersRegion.trim() || null,
-        valuePropositionKeywords: sellerProfile.valuePropositionKeywords
-          .split(",")
-          .map(s => s.trim())
-          .filter(Boolean),
-        targetCustomerSegment: sellerProfile.targetCustomerSegment.trim() || null,
-        priceTier: sellerProfile.priceTier.trim() || null,
-        techStack: sellerProfile.techStack
-          .split(",")
-          .map(s => s.trim())
-          .filter(Boolean),
-        salesModel: sellerProfile.salesModel.trim() || null,
-        targetRegions: sellerProfile.targetRegions
-          .split(",")
-          .map(s => s.trim())
-          .filter(Boolean)
-      };
-
-      await api.setSeller(sellerData);
-      
-      // Also save to localStorage for persistence
-      localStorage.setItem('sellerProfile', JSON.stringify(sellerProfile));
-      
-      setSaveMessage({ type: 'success', text: 'Company profile saved successfully!' });
-      setTimeout(() => setSaveMessage({ type: '', text: '' }), 3000);
-    } catch (error) {
-      console.error("Error saving seller profile:", error);
-      setSaveMessage({ type: 'error', text: `Failed to save company profile: ${error.message}` });
-      setTimeout(() => setSaveMessage({ type: '', text: '' }), 5000);
-    } finally {
-      setSavingSeller(false);
-    }
-  };
-
-  const handleSaveProspectCriteria = async () => {
-    if (!validateProspectCriteria()) {
-      setSaveMessage({ type: 'error', text: 'Please fill in all required prospect criteria fields.' });
-      setTimeout(() => setSaveMessage({ type: '', text: '' }), 3000);
-      return;
-    }
-
-    try {
-      setSavingCriteria(true);
-      
-      // Save to localStorage for persistence
-      localStorage.setItem('prospectCriteria', JSON.stringify(prospectCriteria));
-      
-      setSaveMessage({ type: 'success', text: 'Prospect criteria saved successfully!' });
-      setTimeout(() => setSaveMessage({ type: '', text: '' }), 3000);
-    } catch (error) {
-      console.error("Error saving prospect criteria:", error);
-      setSaveMessage({ type: 'error', text: `Failed to save prospect criteria: ${error.message}` });
-      setTimeout(() => setSaveMessage({ type: '', text: '' }), 5000);
-    } finally {
-      setSavingCriteria(false);
-    }
-  };
+  // Save buttons removed - data is saved automatically when generating leads
 
   const handleGenerateLeads = async () => {
     if (!validateSellerProfile()) {
@@ -399,17 +315,88 @@ export default function Leads() {
           : []
       };
 
-      const results = await api.matchProspects(criteria, 20);
-      console.log("Match results:", results);
-      console.log("First prospect sample:", results && results[0] ? results[0] : "No results");
-      if (results && results[0] && results[0].prospect) {
-        console.log("First prospect data:", results[0].prospect);
-        console.log("firstName:", results[0].prospect.firstName);
-        console.log("lastName:", results[0].prospect.lastName);
-        console.log("position:", results[0].prospect.position);
-        console.log("email:", results[0].prospect.email);
+      // Start lead generation - returns batch_id
+      const batchResponse = await api.matchProspects(criteria, 5);
+      console.log("Batch response:", batchResponse);
+      console.log("Batch response type:", typeof batchResponse);
+      console.log("Is array?", Array.isArray(batchResponse));
+      
+      // Handle both old format (array) and new format (object with batchId)
+      if (Array.isArray(batchResponse)) {
+        // Old format - backend hasn't been updated yet
+        console.warn("Backend returned old format (array). Please rebuild and restart lead-svc.");
+        setMatchedProspects(batchResponse.map(item => ({
+          prospect: item.prospect || item,
+          score: item.score || 100
+        })));
+        setHasSearched(true);
+        setLoading(false);
+        return;
       }
-      setMatchedProspects(results || []);
+      
+      if (!batchResponse || !batchResponse.batchId) {
+        throw new Error("No batch ID returned from server. Backend may need to be rebuilt.");
+      }
+      
+      // Poll for batch status
+      const pollBatchStatus = async (batchId) => {
+        const maxAttempts = 30; // 30 attempts = 60 seconds max
+        let attempts = 0;
+        
+        while (attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+          
+          try {
+            const status = await api.getBatchStatus(batchId);
+            console.log(`Batch ${batchId} status:`, status.status);
+            
+            if (status.status === 'ready') {
+              // Fetch leads
+              const leads = await api.getBatchLeads(batchId);
+              console.log("Fetched leads:", leads);
+              
+              // Convert leads to ScoredProspect format for compatibility
+              const scoredProspects = leads.map(lead => ({
+                prospect: {
+                  id: lead.id?.toString() || '',
+                  company: lead.companyName || '',
+                  firstName: lead.firstName || '',
+                  lastName: lead.lastName || '',
+                  position: lead.jobTitle || '',
+                  email: lead.email || '',
+                  domain: lead.companyWebsite || '',
+                  industry: null,
+                  size: null,
+                  regions: [],
+                  stack: [],
+                  keywords: [],
+                  personalizationHook: null
+                },
+                score: 100 // Default score since we don't calculate it anymore
+              }));
+              
+              setMatchedProspects(scoredProspects);
+              setHasSearched(true);
+              setLoading(false);
+              return;
+            } else if (status.status === 'failed') {
+              throw new Error(status.errorMessage || 'Lead generation failed');
+            }
+            
+            attempts++;
+          } catch (error) {
+            console.error("Error polling batch status:", error);
+            if (attempts >= maxAttempts - 1) {
+              throw error;
+            }
+          }
+        }
+        
+        throw new Error("Timeout waiting for lead generation to complete");
+      };
+      
+      await pollBatchStatus(batchResponse.batchId);
+      // Leads are already set inside pollBatchStatus
       setHasSearched(true);
     } catch (error) {
       console.error("Error generating leads:", error);
@@ -589,31 +576,7 @@ export default function Leads() {
         )}
       </div>
 
-      {/* Save Message */}
-      {saveMessage.text && (
-        <div className={`mb-4 p-4 rounded-lg ${
-          saveMessage.type === 'success' 
-            ? 'bg-green-50 border border-green-200 text-green-800' 
-            : 'bg-red-50 border border-red-200 text-red-800'
-        }`}>
-          <div className="flex items-center justify-between">
-            <span className="flex items-center gap-2">
-              {saveMessage.type === 'success' ? (
-                <CheckCircle size={20} />
-              ) : (
-                <XCircle size={20} />
-              )}
-              {saveMessage.text}
-            </span>
-            <button
-              onClick={() => setSaveMessage({ type: '', text: '' })}
-              className="text-gray-500 hover:text-gray-700"
-            >
-              <XCircle size={18} />
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Save message removed - no longer needed since data is saved automatically */}
 
       {/* Seller Profile Section */}
       <div className="bg-white rounded-lg shadow mb-6 relative">
@@ -890,26 +853,7 @@ export default function Leads() {
           )}
         </div>
         
-        {/* Save Button - Bottom Right */}
-        <div className="p-4 flex justify-end">
-          <button
-            onClick={handleSaveSellerProfile}
-            disabled={savingSeller}
-            className="text-xs bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed text-gray-700 px-3 py-1.5 rounded transition shadow-sm hover:shadow flex items-center gap-1.5"
-          >
-            {savingSeller ? (
-              <>
-                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-600"></div>
-                <span>Saving...</span>
-              </>
-            ) : (
-              <>
-                <CheckCircle size={12} />
-                <span>Save Company Info</span>
-              </>
-            )}
-          </button>
-        </div>
+        {/* Save button removed - data is saved automatically when generating leads */}
       </div>
 
       {/* Prospect Criteria Section */}
@@ -1325,26 +1269,7 @@ export default function Leads() {
           )}
         </div>
         
-        {/* Save Button - Bottom Right */}
-        <div className="p-4 flex justify-end">
-          <button
-            onClick={handleSaveProspectCriteria}
-            disabled={savingCriteria}
-            className="text-xs bg-gray-200 hover:bg-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed text-gray-700 px-3 py-1.5 rounded transition shadow-sm hover:shadow flex items-center gap-1.5"
-          >
-            {savingCriteria ? (
-              <>
-                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-600"></div>
-                <span>Saving...</span>
-              </>
-            ) : (
-              <>
-                <CheckCircle size={12} />
-                <span>Save Prospect Criteria</span>
-              </>
-            )}
-          </button>
-        </div>
+        {/* Save button removed - data is saved automatically when generating leads */}
       </div>
 
       {/* Generate Leads Button */}

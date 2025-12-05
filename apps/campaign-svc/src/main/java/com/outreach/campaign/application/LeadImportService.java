@@ -1,106 +1,79 @@
 package com.outreach.campaign.application;
 
-import com.outreach.campaign.domain.Lead;
-import com.outreach.campaign.domain.Company;
-import com.outreach.campaign.domain.Contact;
-import com.outreach.campaign.infrastructure.CompanyRepository;
-import com.outreach.campaign.infrastructure.ContactRepository;
+import com.outreach.campaign.domain.models.Lead;
+import com.outreach.campaign.domain.entities.LeadEntity;
+import com.outreach.campaign.infrastructure.LeadRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
 import java.util.*;
 
 @Service
 public class LeadImportService {
-    private final CompanyRepository companyRepository;
-    private final ContactRepository contactRepository;
+    private final LeadRepository leadRepository;
     
-    public LeadImportService(
-        CompanyRepository companyRepository,
-        ContactRepository contactRepository
-    ) {
-        this.companyRepository = companyRepository;
-        this.contactRepository = contactRepository;
+    public LeadImportService(LeadRepository leadRepository) {
+        this.leadRepository = leadRepository;
     }
     
     @Transactional
-    public List<Map<String, Object>> importLeadsToDatabase(List<Lead> leads, Integer campaignId) {
+    public List<Map<String, Object>> importLeadsToDatabase(List<Lead> leads, Integer userId) {
         List<Map<String, Object>> importedLeads = new ArrayList<>();
-        Map<String, Company> companyCache = new HashMap<>(); // Cache by company name
+        
+        System.out.println("Importing " + leads.size() + " leads to database for user_id: " + userId);
         
         for (Lead lead : leads) {
             try {
-                // Find or create company
-                Company company = companyCache.get(lead.company());
-                if (company == null) {
-                    // Try to find existing company by name
-                    List<Company> existingCompanies = companyRepository.findAll();
-                    company = existingCompanies.stream()
-                        .filter(c -> c.getName() != null && c.getName().equalsIgnoreCase(lead.company()))
-                        .findFirst()
-                        .orElse(null);
-                    
-                    if (company == null) {
-                        // Create new company
-                        company = new Company();
-                        company.setName(lead.company());
-                        company.setWebsite(lead.domain());
-                        company.setIndustry(lead.industry());
-                        company.setEmployeeCount(lead.companySize());
-                        // Combine notes and personalization hook for enrichment
-                        String enrichmentNotes = "";
-                        if (lead.notes() != null && !lead.notes().isEmpty()) {
-                            enrichmentNotes = lead.notes();
-                        }
-                        if (lead.personalizationHook() != null && !lead.personalizationHook().isEmpty()) {
-                            if (!enrichmentNotes.isEmpty()) enrichmentNotes += " | ";
-                            enrichmentNotes += "Hook: " + lead.personalizationHook();
-                        }
-                        company.setEnrichmentNotes(enrichmentNotes.isEmpty() ? null : enrichmentNotes);
-                        company = companyRepository.save(company);
-                    } else {
-                        // Update existing company with new info if available
-                        if (lead.industry() != null && company.getIndustry() == null) {
-                            company.setIndustry(lead.industry());
-                        }
-                        if (lead.companySize() != null && company.getEmployeeCount() == null) {
-                            company.setEmployeeCount(lead.companySize());
-                        }
-                        if (lead.notes() != null && !lead.notes().isEmpty()) {
-                            String existingNotes = company.getEnrichmentNotes() != null ? company.getEnrichmentNotes() : "";
-                            if (!existingNotes.contains(lead.notes())) {
-                                company.setEnrichmentNotes(existingNotes.isEmpty() ? lead.notes() : existingNotes + " | " + lead.notes());
-                            }
-                        }
-                        company = companyRepository.save(company);
-                    }
-                    companyCache.put(lead.company(), company);
-                }
+                // Create LeadEntity from Lead record
+                LeadEntity leadEntity = new LeadEntity();
+                leadEntity.setUserId(userId);
+                leadEntity.setBatchId(null); // Will be set when creating a lead batch
+                leadEntity.setFirstName(lead.firstName());
+                leadEntity.setLastName(lead.lastName());
+                leadEntity.setJobTitle(lead.position());
+                leadEntity.setCompanyName(lead.company());
+                leadEntity.setCompanyWebsite(lead.domain());
+                leadEntity.setCompanyLinkedin(null); // Not in CSV for now
+                leadEntity.setLinkedinUrl(null); // Not in CSV for now
+                leadEntity.setEmail(lead.email());
+                leadEntity.setCountry(lead.regions()); // Using regions as country for now
+                // Store additional CSV fields in custom_notes as JSON or comma-separated
+                StringBuilder customNotes = new StringBuilder();
+                if (lead.personalizationHook() != null) customNotes.append("Hook: ").append(lead.personalizationHook()).append("; ");
+                if (lead.matchScore() != null) customNotes.append("Match: ").append(lead.matchScore()).append("; ");
+                if (lead.industry() != null) customNotes.append("Industry: ").append(lead.industry()).append("; ");
+                if (lead.companySize() != null) customNotes.append("Size: ").append(lead.companySize()).append("; ");
+                if (lead.regions() != null) customNotes.append("Regions: ").append(lead.regions()).append("; ");
+                if (lead.techStack() != null) customNotes.append("Tech: ").append(lead.techStack()).append("; ");
+                if (lead.keywords() != null) customNotes.append("Keywords: ").append(lead.keywords()).append("; ");
+                if (lead.notes() != null) customNotes.append("Notes: ").append(lead.notes());
+                leadEntity.setCustomNotes(customNotes.length() > 0 ? customNotes.toString() : null);
+                leadEntity.setCreatedAt(LocalDateTime.now());
                 
-                // Create contact
-                Contact contact = new Contact();
-                contact.setCompanyId(company.getCompanyId());
-                contact.setFirstName(lead.firstName());
-                contact.setLastName(lead.lastName());
-                contact.setJobTitle(lead.position());
-                contact.setEmail(lead.email());
-                contact.setPersonalizationNotes(lead.personalizationHook());
-                contact = contactRepository.save(contact);
+                // Save to database
+                leadEntity = leadRepository.save(leadEntity);
                 
                 // Return mapping info
                 Map<String, Object> leadInfo = new HashMap<>();
-                leadInfo.put("leadId", lead.id());
-                leadInfo.put("companyId", company.getCompanyId());
-                leadInfo.put("contactId", contact.getContactId());
-                leadInfo.put("companyName", company.getName());
-                leadInfo.put("contactName", contact.getFirstName() + " " + (contact.getLastName() != null ? contact.getLastName() : ""));
+                leadInfo.put("leadId", leadEntity.getId());
+                leadInfo.put("userId", userId);
+                leadInfo.put("firstName", leadEntity.getFirstName());
+                leadInfo.put("lastName", leadEntity.getLastName());
+                leadInfo.put("companyName", leadEntity.getCompanyName());
+                leadInfo.put("email", leadEntity.getEmail());
                 importedLeads.add(leadInfo);
                 
+                System.out.println("Imported lead: " + leadEntity.getFirstName() + " " + leadEntity.getLastName() + 
+                                 " at " + leadEntity.getCompanyName() + " (ID: " + leadEntity.getId() + ")");
+                
             } catch (Exception e) {
-                System.err.println("Error importing lead " + lead.company() + ": " + e.getMessage());
+                System.err.println("Error importing lead " + (lead.company() != null ? lead.company() : "unknown") + ": " + e.getMessage());
                 e.printStackTrace();
             }
         }
         
+        System.out.println("Successfully imported " + importedLeads.size() + " leads to database");
         return importedLeads;
     }
 }

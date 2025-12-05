@@ -10,9 +10,14 @@ import java.util.UUID;
 @Component
 public class ProspectService {
     private final AiServiceClient aiServiceClient;
+    private final RabbitMQClient rabbitMQClient;
+    private final boolean useRabbitMQ;
 
-    public ProspectService(AiServiceClient aiServiceClient) {
+    public ProspectService(AiServiceClient aiServiceClient, RabbitMQClient rabbitMQClient) {
         this.aiServiceClient = aiServiceClient;
+        this.rabbitMQClient = rabbitMQClient;
+        // Use RabbitMQ by default, fallback to HTTP if RabbitMQ is not available
+        this.useRabbitMQ = true;
     }
     
     /**
@@ -86,14 +91,28 @@ public class ProspectService {
             System.out.println("Criteria: industry=" + criteria.industry() + ", minSize=" + criteria.minSize() + ", maxSize=" + criteria.maxSize());
             
             // Use AI Service to generate matching companies based on criteria
-            // For testing: limit to 5 companies
-            int requestedCompanies = 5;
+            // Always limit to maximum 5 companies
+            int requestedCompanies = Math.min(limit, 5);
+            if (limit > 5) {
+                System.out.println("=== Requested limit " + limit + " exceeds maximum of 5, limiting to 5 ===");
+            }
             System.out.println("=== Using AI Service to find matching companies ===");
-            System.out.println("Requesting " + requestedCompanies + " companies from AI Service (testing mode)...");
+            System.out.println("Requesting " + requestedCompanies + " companies from AI Service...");
             
             List<String> companyDomains;
             try {
-                companyDomains = aiServiceClient.generateMatchingCompanies(criteria, requestedCompanies);
+                // Use RabbitMQ for lead generation
+                // Note: This method is deprecated - use MatchService.startLeadGeneration instead
+                // This is kept for backward compatibility but should not be called
+                if (useRabbitMQ) {
+                    System.out.println("=== WARNING: searchProspects is deprecated. Use MatchService.startLeadGeneration instead ===");
+                    System.out.println("=== Using RabbitMQ to generate matching companies (without batch_id) ===");
+                    // Pass null for batchId since this is the old flow
+                    companyDomains = rabbitMQClient.generateMatchingCompanies(criteria, requestedCompanies, null);
+                } else {
+                    System.out.println("=== Using HTTP to generate matching companies ===");
+                    companyDomains = aiServiceClient.generateMatchingCompanies(criteria, requestedCompanies);
+                }
                 System.out.println("AI Service generated " + (companyDomains != null ? companyDomains.size() : 0) + " company domains");
                 
                 if (companyDomains == null || companyDomains.isEmpty()) {

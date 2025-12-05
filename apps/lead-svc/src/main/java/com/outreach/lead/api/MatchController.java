@@ -1,22 +1,47 @@
 // Exposes REST endpoints (/api/v1/...) so the frontend can talk to the backend
 package com.outreach.lead.api;
 
+import com.outreach.lead.api.DTO.LeadBatchResponse;
+import com.outreach.lead.api.DTO.LeadBatchStatusResponse;
 import com.outreach.lead.application.MatchService;
+import com.outreach.lead.application.UserContextService;
 import com.outreach.lead.domain.Prospect;
 import com.outreach.lead.domain.ProspectCriteria;
 import com.outreach.lead.domain.SellerProfile;
-import org.springframework.web.bind.annotation.*;
+import com.outreach.lead.domain.entities.LeadBatchEntity;
+import com.outreach.lead.domain.entities.LeadEntity;
+import com.outreach.lead.infrastructure.LeadBatchRepository;
+import com.outreach.lead.infrastructure.LeadRepository;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import java.util.*;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
+
 import java.io.StringWriter;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1")
 public class MatchController {
     private final MatchService svc;
-    public MatchController(MatchService svc){ this.svc = svc; }
+    private final UserContextService userContextService;
+    private final LeadBatchRepository leadBatchRepository;
+    private final LeadRepository leadRepository;
+    
+    public MatchController(
+        MatchService svc,
+        UserContextService userContextService,
+        LeadBatchRepository leadBatchRepository,
+        LeadRepository leadRepository
+    ) {
+        this.svc = svc;
+        this.userContextService = userContextService;
+        this.leadBatchRepository = leadBatchRepository;
+        this.leadRepository = leadRepository;
+    }
     @GetMapping
     public Map<String, String> root() {
         return Map.of("status", "ok");
@@ -41,26 +66,109 @@ public class MatchController {
     }
 
     @PostMapping("/match")
-    public List<MatchService.ScoredProspect> match(
+    public ResponseEntity<LeadBatchResponse> match(
             @RequestBody(required=false) ProspectCriteria criteria,
-            @RequestParam(defaultValue="20") int limit) {
+            @RequestParam(defaultValue="5") int limit,
+            @RequestHeader(value = "X-User-Email", required = false) String userEmail) {
         try {
             System.out.println("=== MATCH CONTROLLER: Received match request ===");
+            System.out.println("User Email: " + userEmail);
             System.out.println("Criteria: " + (criteria != null ? criteria.toString() : "null"));
             System.out.println("Limit: " + limit);
+            
+            // Get user_id from email
+            Integer userId = userContextService.getUserIdFromEmail(userEmail);
+            System.out.println("Resolved user_id: " + userId);
+            
+            // Get seller profile (should be set via PUT /seller)
+            SellerProfile seller = svc.getSeller();
+            if (seller == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Seller profile not set. Please set seller profile first.");
+            }
             
             if (criteria == null) {
                 criteria = new ProspectCriteria(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
             }
             
-            List<MatchService.ScoredProspect> results = svc.match(criteria, limit);
-            System.out.println("=== MATCH CONTROLLER: Returning " + results.size() + " results ===");
-            return results;
+            // Start lead generation (saves to DB, publishes to RabbitMQ)
+            LeadBatchResponse response = svc.startLeadGeneration(seller, criteria, limit, userId);
+            System.out.println("=== MATCH CONTROLLER: Returning batch_id: " + response.batchId() + " ===");
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            System.err.println("=== MATCH CONTROLLER ERROR: " + e.getMessage() + " ===");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         } catch (Exception e) {
             System.err.println("=== MATCH CONTROLLER ERROR ===");
             System.err.println("Error in match endpoint: " + e.getMessage());
             e.printStackTrace();
-            return List.of(); // Return empty list on error
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to start lead generation: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Get batch status
+     */
+    @GetMapping("/lead-batches/{batchId}")
+    public ResponseEntity<LeadBatchStatusResponse> getBatchStatus(
+            @PathVariable Integer batchId,
+            @RequestHeader(value = "X-User-Email", required = false) String userEmail) {
+        try {
+            Integer userId = userContextService.getUserIdFromEmail(userEmail);
+            
+            LeadBatchEntity batch = leadBatchRepository.findByIdAndUserId(batchId, userId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Batch not found"));
+            
+            LeadBatchStatusResponse response = new LeadBatchStatusResponse(
+                batch.getId(),
+                batch.getUserId(),
+                batch.getIcpId(),
+                batch.getSource(),
+                batch.getStatus(),
+                batch.getRequestedLeadCount(),
+                batch.getTotalLeads(),
+                batch.getErrorMessage()
+            );
+            
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+    }
+    
+    /**
+     * Get leads for a batch
+     */
+    @GetMapping("/lead-batches/{batchId}/leads")
+    public ResponseEntity<List<Map<String, Object>>> getBatchLeads(
+            @PathVariable Integer batchId,
+            @RequestHeader(value = "X-User-Email", required = false) String userEmail) {
+        try {
+            Integer userId = userContextService.getUserIdFromEmail(userEmail);
+            
+            // Verify batch belongs to user
+            LeadBatchEntity batch = leadBatchRepository.findByIdAndUserId(batchId, userId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Batch not found"));
+            
+            // Get leads for this batch
+            List<LeadEntity> leads = leadRepository.findByUserIdAndBatchId(userId, batchId);
+            
+            // Convert to DTO
+            List<Map<String, Object>> leadDTOs = leads.stream().map(lead -> {
+                Map<String, Object> dto = new HashMap<>();
+                dto.put("id", lead.getId());
+                dto.put("firstName", lead.getFirstName());
+                dto.put("lastName", lead.getLastName());
+                dto.put("jobTitle", lead.getJobTitle());
+                dto.put("companyName", lead.getCompanyName());
+                dto.put("companyWebsite", lead.getCompanyWebsite());
+                dto.put("email", lead.getEmail());
+                dto.put("country", lead.getCountry());
+                return dto;
+            }).collect(Collectors.toList());
+            
+            return ResponseEntity.ok(leadDTOs);
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
     }
 

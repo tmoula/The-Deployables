@@ -3,12 +3,11 @@ package com.outreach.campaign.api;
 import com.outreach.campaign.application.CampaignService;
 import com.outreach.campaign.application.CsvParserService;
 import com.outreach.campaign.application.LeadImportService;
-import com.outreach.campaign.domain.Campaign;
-import com.outreach.campaign.domain.Lead;
-import com.outreach.campaign.domain.Company;
-import com.outreach.campaign.domain.Contact;
-import com.outreach.campaign.infrastructure.CompanyRepository;
-import com.outreach.campaign.infrastructure.ContactRepository;
+import com.outreach.campaign.application.UserContextService;
+import com.outreach.campaign.domain.models.Campaign;
+import com.outreach.campaign.domain.models.Lead;
+import com.outreach.campaign.domain.entities.LeadEntity;
+import com.outreach.campaign.infrastructure.LeadRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -21,25 +20,26 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1")
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:5173"}, allowCredentials = "true")
 public class CampaignController {
     private final CampaignService campaignService;
     private final CsvParserService csvParserService;
     private final LeadImportService leadImportService;
-    private final ContactRepository contactRepository;
-    private final CompanyRepository companyRepository;
+    private final UserContextService userContextService;
+    private final LeadRepository leadRepository;
     
     public CampaignController(
-        CampaignService campaignService, 
+        CampaignService campaignService,
         CsvParserService csvParserService,
         LeadImportService leadImportService,
-        ContactRepository contactRepository,
-        CompanyRepository companyRepository
+        UserContextService userContextService,
+        LeadRepository leadRepository
     ) {
         this.campaignService = campaignService;
         this.csvParserService = csvParserService;
         this.leadImportService = leadImportService;
-        this.contactRepository = contactRepository;
-        this.companyRepository = companyRepository;
+        this.userContextService = userContextService;
+        this.leadRepository = leadRepository;
     }
     
     @GetMapping("/health")
@@ -51,58 +51,93 @@ public class CampaignController {
     public ResponseEntity<?> uploadCsv(
             @RequestParam("file") MultipartFile file,
             @RequestParam("campaignName") String campaignName,
-            @RequestParam(value = "description", required = false) String description) {
+            @RequestParam(value = "description", required = false) String description,
+            @RequestHeader(value = "X-User-Email", required = false) String userEmail) {
         try {
+            System.out.println("UPLOAD CSV - Received request");
+            System.out.println("UPLOAD CSV - User Email Header: " + userEmail);
+            System.out.println("UPLOAD CSV - Campaign Name: " + campaignName);
+            System.out.println("UPLOAD CSV - File Name: " + (file != null ? file.getOriginalFilename() : "null"));
+            System.out.println("UPLOAD CSV - File Size: " + (file != null ? file.getSize() : "null"));
+            
             if (file.isEmpty()) {
+                System.out.println("UPLOAD CSV - Error: File is empty");
                 return ResponseEntity.badRequest()
                     .body(Map.of("error", "File is empty"));
             }
             
             if (!file.getOriginalFilename().endsWith(".csv")) {
+                System.out.println("UPLOAD CSV - Error: File is not CSV");
                 return ResponseEntity.badRequest()
                     .body(Map.of("error", "File must be a CSV file"));
             }
             
             // Parse CSV
+            System.out.println("UPLOAD CSV - Parsing CSV file...");
             List<Lead> leads = csvParserService.parseCsv(file);
+            System.out.println("UPLOAD CSV - Parsed " + leads.size() + " leads");
             
             if (leads.isEmpty()) {
+                System.out.println("UPLOAD CSV - Error: No valid leads found");
                 return ResponseEntity.badRequest()
                     .body(Map.of("error", "No valid leads found in CSV file"));
             }
             
             // Validate campaign name
             if (campaignName == null || campaignName.trim().isEmpty()) {
+                System.out.println("UPLOAD CSV - Error: Campaign name is required");
                 return ResponseEntity.badRequest()
                     .body(Map.of("error", "Campaign name is required"));
             }
             
-            // Create campaign (saves to database)
+            // Resolve user from email header
+            System.out.println("UPLOAD CSV - Resolving user ID from email...");
+            Integer userId = userContextService.getUserIdFromEmail(userEmail);
+            System.out.println("UPLOAD CSV - Resolved User ID: " + userId);
+
+            // Create campaign (saves to database) for this specific user
             String name = campaignName.trim();
+            System.out.println("UPLOAD CSV - Creating campaign with name: " + name + " for user_id: " + userId);
             
-            Campaign campaign = campaignService.createCampaign(name, description, leads);
+            Campaign campaign = campaignService.createCampaign(userId, name, description, leads);
+            System.out.println("UPLOAD CSV - Campaign created with ID: " + campaign.id());
             
-            // Import leads to database (companies and contacts tables)
-            // Use campaign ID from the created campaign
-            Integer campaignIdForImport = Integer.parseInt(campaign.id());
-            List<Map<String, Object>> importedLeads = leadImportService.importLeadsToDatabase(leads, campaignIdForImport);
+            // Import leads to database (leads table)
+            System.out.println("UPLOAD CSV - Importing leads to database for user_id: " + userId);
+            List<Map<String, Object>> importedLeads = leadImportService.importLeadsToDatabase(leads, userId);
+            System.out.println("UPLOAD CSV - Imported " + importedLeads.size() + " leads to database");
             
             Map<String, Object> response = new HashMap<>();
             response.put("campaign", campaign);
             response.put("leadsCount", leads.size());
             response.put("importedLeads", importedLeads);
-            response.put("message", "CSV uploaded and campaign created successfully. Leads imported to database.");
+            response.put("message", "CSV uploaded and campaign created successfully. " + importedLeads.size() + " leads imported to database.");
             
+            System.out.println("UPLOAD CSV - Success! Returning response");
             return ResponseEntity.ok(response);
         } catch (Exception e) {
+            System.out.println("UPLOAD CSV - Exception occurred: " + e.getMessage());
+            e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of("error", "Failed to process CSV: " + e.getMessage()));
         }
     }
     
     @GetMapping("/campaigns")
-    public List<Campaign> getAllCampaigns() {
-        return campaignService.getAllCampaigns();
+    public List<Campaign> getAllCampaigns(
+            @RequestHeader(value = "X-User-Email", required = false) String userEmail) {
+        System.out.println("GET ALL CAMPAIGNS - User Email Header: " + userEmail);
+        try {
+            Integer userId = userContextService.getUserIdFromEmail(userEmail);
+            System.out.println("GET ALL CAMPAIGNS - Resolved User ID: " + userId);
+            List<Campaign> campaigns = campaignService.getAllCampaigns(userId);
+            System.out.println("GET ALL CAMPAIGNS - Returning " + campaigns.size() + " campaigns");
+            return campaigns;
+        } catch (Exception e) {
+            System.out.println("GET ALL CAMPAIGNS - Error: " + e.getMessage());
+            e.printStackTrace();
+            throw e;
+        }
     }
     
     @GetMapping("/campaigns/{id}")
@@ -118,36 +153,32 @@ public class CampaignController {
     }
     
     @GetMapping("/campaigns/{campaignId}/contacts")
-    public ResponseEntity<?> getCampaignContacts(@PathVariable Integer campaignId) {
+    public ResponseEntity<?> getCampaignContacts(
+            @PathVariable Integer campaignId,
+            @RequestHeader(value = "X-User-Email", required = false) String userEmail) {
         try {
-            // Get all contacts (for now, we'll return all contacts since we don't have campaign-contact mapping yet)
-            // TODO: Add campaign_contacts junction table to properly map contacts to campaigns
-            List<Contact> allContacts = contactRepository.findAll();
+            // Resolve user ID
+            Integer userId = userContextService.getUserIdFromEmail(userEmail);
             
-            // Enrich contacts with company information
+            // Get leads for this user (we can filter by campaign later using campaign_leads table)
+            List<LeadEntity> leads = leadRepository.findByUserId(userId);
+            
+            // Convert to response format
             List<Map<String, Object>> enrichedContacts = new ArrayList<>();
-            for (Contact contact : allContacts) {
+            for (LeadEntity lead : leads) {
                 Map<String, Object> contactMap = new HashMap<>();
-                contactMap.put("contactId", contact.getContactId());
-                contactMap.put("firstName", contact.getFirstName());
-                contactMap.put("lastName", contact.getLastName());
-                contactMap.put("jobTitle", contact.getJobTitle());
-                contactMap.put("email", contact.getEmail());
-                contactMap.put("personalizationNotes", contact.getPersonalizationNotes());
-                contactMap.put("companyId", contact.getCompanyId());
-                
-                // Fetch company information
-                if (contact.getCompanyId() != null) {
-                    Company company = companyRepository.findById(contact.getCompanyId()).orElse(null);
-                    if (company != null) {
-                        contactMap.put("companyName", company.getName());
-                        contactMap.put("companyIndustry", company.getIndustry());
-                        contactMap.put("companyWebsite", company.getWebsite());
-                        contactMap.put("companySize", company.getEmployeeCount());
-                        contactMap.put("companyLocation", company.getHqLocation());
-                    }
-                }
-                
+                contactMap.put("contactId", lead.getId());
+                contactMap.put("leadId", lead.getId());
+                contactMap.put("firstName", lead.getFirstName());
+                contactMap.put("lastName", lead.getLastName());
+                contactMap.put("jobTitle", lead.getJobTitle());
+                contactMap.put("email", lead.getEmail());
+                contactMap.put("customNotes", lead.getCustomNotes());
+                contactMap.put("companyName", lead.getCompanyName());
+                contactMap.put("companyWebsite", lead.getCompanyWebsite());
+                contactMap.put("companyLinkedin", lead.getCompanyLinkedin());
+                contactMap.put("linkedinUrl", lead.getLinkedinUrl());
+                contactMap.put("country", lead.getCountry());
                 enrichedContacts.add(contactMap);
             }
             
@@ -169,6 +200,29 @@ public class CampaignController {
             return ResponseEntity.ok(updated);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
+        }
+    }
+    
+    @DeleteMapping("/campaigns/{id}")
+    public ResponseEntity<?> deleteCampaign(
+            @PathVariable String id,
+            @RequestHeader(value = "X-User-Email", required = false) String userEmail) {
+        try {
+            System.out.println("DELETE REQUEST - Campaign ID: " + id + ", User Email: " + userEmail);
+            Integer userId = userContextService.getUserIdFromEmail(userEmail);
+            System.out.println("DELETE REQUEST - Resolved User ID: " + userId);
+            campaignService.deleteCampaign(id, userId);
+            System.out.println("DELETE REQUEST - Successfully deleted campaign " + id);
+            return ResponseEntity.noContent().build();
+        } catch (IllegalArgumentException e) {
+            System.out.println("DELETE REQUEST - Error: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            System.out.println("DELETE REQUEST - Exception: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to delete campaign: " + e.getMessage()));
         }
     }
     

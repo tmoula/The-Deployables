@@ -39,6 +39,13 @@ dependencies {
     // OpenAPI + Swagger UI at /swagger
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
 
+    // RabbitMQ support
+    implementation 'org.springframework.boot:spring-boot-starter-amqp'
+
+    // Database support (JPA + PostgreSQL)
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.postgresql:postgresql'
+
     // Testing (JUnit, MockMvc, etc.)
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'

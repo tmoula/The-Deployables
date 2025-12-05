@@ -3,8 +3,8 @@ Email Generator Service - Generates personalized cold outreach emails using AI
 """
 import logging
 from typing import Dict, Optional, Any
-from models import CompanyInfo, ContactInfo, EmailRequirements
-from services.subject_generator import SubjectGenerator
+from src.models import CompanyInfo, ContactInfo, EmailRequirements
+from src.services.subject_generator import SubjectGenerator
 
 logger = logging.getLogger(__name__)
 

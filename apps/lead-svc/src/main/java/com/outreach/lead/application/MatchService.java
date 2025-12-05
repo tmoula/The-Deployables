@@ -1,29 +1,47 @@
 package com.outreach.lead.application;
 
+import com.outreach.lead.api.DTO.LeadBatchResponse;
 import com.outreach.lead.domain.Prospect;
 import com.outreach.lead.domain.ProspectCriteria;
 import com.outreach.lead.domain.SellerProfile;
+import com.outreach.lead.domain.entities.*;
+import com.outreach.lead.infrastructure.*;
 import org.springframework.stereotype.Service;
-import com.outreach.lead.infrastructure.ProspectService;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-
-
+import java.util.Optional;
 
 @Service
 public class MatchService {
-    private SellerProfile seller;                       // set via PUT /seller
+    private SellerProfile seller;                       // set via PUT /seller (in-memory for backward compatibility)
     private final ProspectService prospectService;
+    private final SenderCompanyRepository senderCompanyRepository;
+    private final ICPProfileRepository icpProfileRepository;
+    private final LeadBatchRepository leadBatchRepository;
+    private final RabbitMQClient rabbitMQClient;
+    private final UserContextService userContextService;
     
-    public MatchService(ProspectService prospectService) {
+    public MatchService(
+        ProspectService prospectService,
+        SenderCompanyRepository senderCompanyRepository,
+        ICPProfileRepository icpProfileRepository,
+        LeadBatchRepository leadBatchRepository,
+        RabbitMQClient rabbitMQClient,
+        UserContextService userContextService
+    ) {
         this.prospectService = prospectService;
-        // No hardcoded data - prospects are fetched dynamically based on user criteria
+        this.senderCompanyRepository = senderCompanyRepository;
+        this.icpProfileRepository = icpProfileRepository;
+        this.leadBatchRepository = leadBatchRepository;
+        this.rabbitMQClient = rabbitMQClient;
+        this.userContextService = userContextService;
     }
     
 
-    // 1) Save & get seller
+    // 1) Save & get seller (in-memory for backward compatibility)
     public SellerProfile getSeller(){ return seller; }
     public SellerProfile setSeller(SellerProfile s){ this.seller = s; return s; }
 
@@ -45,74 +63,122 @@ public class MatchService {
     }
 
 
-    // 3) Match using criteria - dynamically fetch from AI Service
+    /**
+     * Start lead generation process: save sender company, ICP profile, create batch, and publish to RabbitMQ
+     * Returns immediately with batch_id for async processing
+     */
+    @Transactional
+    public LeadBatchResponse startLeadGeneration(SellerProfile sellerProfile, ProspectCriteria criteria, int limit, Integer userId) {
+        System.out.println("=== MATCH SERVICE: Starting lead generation for user_id: " + userId + " ===");
+        
+        // 1. Save or update sender company
+        SenderCompanyEntity senderCompany = saveOrUpdateSenderCompany(userId, sellerProfile);
+        System.out.println("=== Saved/Updated sender company: " + senderCompany.getId() + " ===");
+        
+        // 2. Save or update ICP profile
+        ICPProfileEntity icpProfile = saveOrUpdateICPProfile(userId, criteria);
+        System.out.println("=== Saved/Updated ICP profile: " + icpProfile.getId() + " ===");
+        
+        // 3. Create lead batch
+        LeadBatchEntity batch = new LeadBatchEntity();
+        batch.setUserId(userId);
+        batch.setIcpId(icpProfile.getId());
+        batch.setSource("ai_scraper");
+        batch.setStatus("running");
+        batch.setRequestedLeadCount(Math.min(limit, 5));
+        batch.setTotalLeads(0);
+        batch = leadBatchRepository.save(batch);
+        System.out.println("=== Created lead batch: " + batch.getId() + " ===");
+        
+        // 4. Publish to RabbitMQ (async processing)
+        try {
+            rabbitMQClient.generateMatchingCompanies(criteria, Math.min(limit, 5), batch.getId());
+            System.out.println("=== Published lead generation request to RabbitMQ for batch: " + batch.getId() + " ===");
+        } catch (Exception e) {
+            System.err.println("=== ERROR publishing to RabbitMQ: " + e.getMessage() + " ===");
+            batch.setStatus("failed");
+            batch.setErrorMessage("Failed to publish to RabbitMQ: " + e.getMessage());
+            leadBatchRepository.save(batch);
+            throw new RuntimeException("Failed to start lead generation", e);
+        }
+        
+        return new LeadBatchResponse(batch.getId(), "running", "Lead generation started");
+    }
+    
+    /**
+     * Save or update sender company (upsert by user_id)
+     */
+    private SenderCompanyEntity saveOrUpdateSenderCompany(Integer userId, SellerProfile seller) {
+        Optional<SenderCompanyEntity> existing = senderCompanyRepository.findByUserId(userId);
+        
+        SenderCompanyEntity entity;
+        if (existing.isPresent()) {
+            entity = existing.get();
+        } else {
+            entity = new SenderCompanyEntity();
+            entity.setUserId(userId);
+        }
+        
+        entity.setName(seller.companyName());
+        entity.setIndustry(seller.industry());
+        // Map other fields as needed
+        if (seller.headquartersRegion() != null) {
+            // Could store in description or add a field
+            entity.setDescription("Headquarters: " + seller.headquartersRegion());
+        }
+        
+        return senderCompanyRepository.save(entity);
+    }
+    
+    /**
+     * Save or update ICP profile (upsert by user_id + criteria hash)
+     */
+    private ICPProfileEntity saveOrUpdateICPProfile(Integer userId, ProspectCriteria criteria) {
+        // Try to find existing ICP profile with same criteria
+        Optional<ICPProfileEntity> existing = icpProfileRepository.findByUserIdAndTargetIndustryAndCompanySizeMinAndCompanySizeMax(
+            userId,
+            criteria.industry(),
+            criteria.minSize(),
+            criteria.maxSize()
+        );
+        
+        ICPProfileEntity entity;
+        if (existing.isPresent()) {
+            entity = existing.get();
+        } else {
+            entity = new ICPProfileEntity();
+            entity.setUserId(userId);
+            // Generate name from criteria
+            String name = (criteria.industry() != null ? criteria.industry() : "General") + " - " +
+                         (criteria.minSize() != null ? criteria.minSize() : "0") + "-" +
+                         (criteria.maxSize() != null ? criteria.maxSize() : "∞") + " employees";
+            entity.setName(name);
+        }
+        
+        entity.setTargetIndustry(criteria.industry());
+        entity.setCompanySizeMin(criteria.minSize());
+        entity.setCompanySizeMax(criteria.maxSize());
+        
+        // Build target titles from criteria
+        if (criteria.targetRoles() != null && !criteria.targetRoles().isEmpty()) {
+            entity.setTargetTitles(String.join(", ", criteria.targetRoles()));
+        }
+        
+        // Build geo region
+        if (criteria.regions() != null && !criteria.regions().isEmpty()) {
+            entity.setGeoRegion(String.join(", ", criteria.regions()));
+        } else if (criteria.headquartersRegion() != null) {
+            entity.setGeoRegion(criteria.headquartersRegion());
+        }
+        
+        return icpProfileRepository.save(entity);
+    }
+
+    // Legacy method for backward compatibility (returns empty list, use startLeadGeneration instead)
     public List<ScoredProspect> match(ProspectCriteria c, int limit){
-        System.out.println("=== MATCH SERVICE: Starting match ===");
-        System.out.println("Seller is null: " + (seller == null));
-        if (seller == null) {
-            System.err.println("ERROR: Seller profile is null. Cannot match without seller profile.");
-            return List.of();
-        }
-
-        // Dynamically fetch prospects from AI Service based on criteria
-        // For testing: limit to 5 prospects
-        int requestedLimit = 5;
-        System.out.println("=== MATCH SERVICE: Calling prospectService.searchProspects ===");
-        List<Prospect> fetchedProspects = prospectService.searchProspects(c, requestedLimit);
-        System.out.println("=== MATCH SERVICE: Received " + fetchedProspects.size() + " prospects from searchProspects ===");
-        
-        if (fetchedProspects.isEmpty()) {
-            System.err.println("ERROR: No prospects fetched from AI Service. Check AI service connection and criteria.");
-            return List.of();
-        }
-        
-        // Generate personalization hooks for all prospects using AI Service
-        System.out.println("=== Generating personalization hooks for " + fetchedProspects.size() + " prospects ===");
-        fetchedProspects = prospectService.enrichProspectsWithHooks(fetchedProspects, seller);
-
-        // (a) FILTER by criteria (additional filtering on fetched prospects)
-        var filtered = fetchedProspects.stream().filter(p -> {
-            // Company name filter
-            if (c.companyName()!=null && !c.companyName().isEmpty() && 
-                p.company()!=null && !p.company().toLowerCase().contains(c.companyName().toLowerCase())) 
-                return false;
-            
-            // Domain filter
-            if (c.domain()!=null && !c.domain().isEmpty() && 
-                p.domain()!=null && !p.domain().toLowerCase().contains(c.domain().toLowerCase())) 
-                return false;
-            
-            // Industry filter
-            if (c.industry()!=null && p.industry()!=null &&
-                    !p.industry().equalsIgnoreCase(c.industry())) return false;
-
-            // Size range filter
-            if (c.minSize()!=null && (p.size()==null || p.size()<c.minSize())) return false;
-            if (c.maxSize()!=null && (p.size()==null || p.size()>c.maxSize())) return false;
-
-            // Region filter (check both regions and headquartersRegion)
-            if (c.regions()!=null && !c.regions().isEmpty()) {
-                if (p.regions()==null || p.regions().stream().noneMatch(c.regions()::contains)) return false;
-            }
-            if (c.headquartersRegion()!=null && !c.headquartersRegion().isEmpty()) {
-                if (p.regions()==null || p.regions().stream().noneMatch(r -> r.toLowerCase().contains(c.headquartersRegion().toLowerCase()))) return false;
-            }
-            
-            // Technology stack filter (check both techUsed and requiredStack for backward compatibility)
-            var techFilter = c.techUsed()!=null && !c.techUsed().isEmpty() ? c.techUsed() : 
-                           (c.requiredStack()!=null && !c.requiredStack().isEmpty() ? c.requiredStack() : null);
-            if (techFilter!=null && (p.stack()==null || !p.stack().containsAll(techFilter))) return false;
-            
-            // keywords are "desired", not required → don't filter here
-            return true;
-        });
-
-        // (b) SCORE the filtered set using seller + criteria
-        return filtered
-                .map(p -> new ScoredProspect(p, score(seller, c, p)))
-                .sorted(Comparator.comparingDouble(ScoredProspect::score).reversed())
-                .limit(Math.max(1, limit))
-                .toList();
+        System.out.println("=== MATCH SERVICE: Legacy match() called - returning empty list ===");
+        System.out.println("=== Use startLeadGeneration() instead for database persistence ===");
+        return List.of();
     }
 
     // simple, explainable scoring 0..100 (weights are tunable)

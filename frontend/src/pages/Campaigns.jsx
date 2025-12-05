@@ -162,13 +162,19 @@ export default function Campaigns() {
   };
 
   const handleFileUpload = async () => {
+    console.log('🚀 handleFileUpload called');
+    console.log('🚀 uploadedFile:', uploadedFile);
+    console.log('🚀 campaignName:', campaignName);
+    
     if (!uploadedFile) {
+      console.log('🚀 Error: No file uploaded');
       alert("Please upload a CSV file");
       return;
     }
 
     // Validate campaign name
     if (!campaignName || campaignName.trim() === "") {
+      console.log('🚀 Error: Campaign name is empty');
       setCampaignNameError("Campaign name is required");
       setCurrentStep(1);
       return;
@@ -177,11 +183,17 @@ export default function Campaigns() {
 
     try {
       setUploading(true);
+      console.log('📤 Uploading CSV - Campaign Name:', campaignName.trim());
+      console.log('📤 Uploading CSV - File:', uploadedFile?.name);
+      
       const result = await campaignApi.uploadCsv(
         uploadedFile,
         campaignName.trim(),
         description || undefined
       );
+      
+      console.log('📤 Upload response:', result);
+      
       const campaign = result.campaign || result;
       const leadsCount = result.leadsCount || campaign.totalLeads || 0;
       
@@ -192,46 +204,26 @@ export default function Campaigns() {
         await loadCampaignContacts(campaignIdForContacts);
       }
       
+      // Reload campaigns list to show the newly created campaign
+      await loadCampaigns();
+      
+      // Set the created campaign as selected so user can continue editing
+      if (campaign.id) {
+        setSelectedCampaign(campaign);
+      }
+      
       alert(
         `Successfully uploaded ${leadsCount} leads! Campaign created: ${
           campaign.name || "Campaign"
         }. ${result.importedLeads ? result.importedLeads.length + ' contacts imported to database.' : ''}`
       );
-      // Reset all state
-      setCampaignName("");
-      setDescription("");
+      
+      // Advance to next step (Compose Email) after successful upload
+      setCurrentStep(2);
+      
+      // Don't reset state - keep campaign name and file for editing
+      // Only reset error state
       setCampaignNameError("");
-      setUploadedFile(null);
-      setEmailContent("");
-      setEmailSubject("");
-      setCampaignSettings({
-        sendDelay: 0,
-        followUpDelay: 3,
-        maxFollowUps: 2,
-        sendTime: "09:00",
-        startDate: "",
-        endDate: "",
-        activeDays: [],
-        timezone: "UTC",
-        startTime: "09:00",
-        endTime: "17:00",
-        selectedMailboxIds: []
-      });
-      setEmailVariants([{ id: 1, subject: "", content: "", isActive: true }]);
-      setFollowUps([]);
-      setSelectedFollowUp(null);
-      setSelectedFollowUpVariant(null);
-      setFollowUpTiming({
-        delayDays: 3,
-        fallsOnDay: ""
-      });
-      setTimelineSettings({
-        sendTime: "09:00",
-        timezone: "UTC"
-      });
-      setCurrentStep(1);
-      setShowCreateCampaign(false);
-      await loadCampaigns();
     } catch (error) {
       console.error("Upload failed:", error);
       alert("Failed to upload CSV: " + error.message);
@@ -323,6 +315,23 @@ export default function Campaigns() {
       }
     } catch (error) {
       alert("Failed to update campaign status: " + error.message);
+    }
+  };
+
+  const handleDeleteCampaign = async (campaignId) => {
+    if (!window.confirm("Are you sure you want to delete this campaign? This action cannot be undone.")) {
+      return;
+    }
+
+    try {
+      await campaignApi.deleteCampaign(campaignId);
+      await loadCampaigns();
+      // Clear selected campaign if it was deleted
+      if (selectedCampaign && selectedCampaign.id === campaignId) {
+        setSelectedCampaign(null);
+      }
+    } catch (error) {
+      alert("Failed to delete campaign: " + error.message);
     }
   };
 
@@ -620,7 +629,7 @@ export default function Campaigns() {
               <div className="flex gap-2">
                 {currentStep < 4 ? (
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       if (currentStep === 1) {
                         if (
                           !campaignName ||
@@ -638,6 +647,20 @@ export default function Campaigns() {
                             "Please upload a CSV file first"
                           );
                           return;
+                        }
+                        
+                        // If not editing, upload CSV and create campaign before proceeding
+                        if (!editingCampaignId && uploadedFile) {
+                          try {
+                            await handleFileUpload();
+                            // handleFileUpload will reload campaigns and show success message
+                            // Only proceed to next step if upload was successful
+                            // (handleFileUpload already handles errors)
+                            return; // Don't advance step here, let handleFileUpload handle it
+                          } catch (error) {
+                            // Error already handled in handleFileUpload
+                            return;
+                          }
                         }
                       }
                       if (
@@ -1192,7 +1215,7 @@ export default function Campaigns() {
                             onClick={(e) => {
                               e.stopPropagation();
                               setOpenMenuId(null);
-                              // Add delete option here
+                              handleDeleteCampaign(campaign.id);
                             }}
                             className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
                           >

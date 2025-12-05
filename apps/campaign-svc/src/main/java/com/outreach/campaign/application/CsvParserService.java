@@ -1,6 +1,6 @@
 package com.outreach.campaign.application;
 
-import com.outreach.campaign.domain.Lead;
+import com.outreach.campaign.domain.models.Lead;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 

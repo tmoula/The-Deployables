@@ -1,4 +1,4 @@
-package com.outreach.campaign.domain;
+package com.outreach.campaign.domain.models;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -10,7 +10,7 @@ public record Campaign(
         CampaignStatus status,
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
-        List<Lead> leads,
+        List<com.outreach.campaign.domain.models.Lead> leads,
         Integer totalLeads,
         Integer sentCount,
         Integer openedCount,

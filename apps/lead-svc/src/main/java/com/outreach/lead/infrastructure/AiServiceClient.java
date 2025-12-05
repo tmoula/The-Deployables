@@ -81,10 +81,13 @@ public class AiServiceClient {
             );
             
             System.out.println("AI Service response status: " + response.getStatusCode());
+            System.out.println("AI Service response headers: " + response.getHeaders());
             
             Map<String, Object> responseBody = response.getBody();
+            System.out.println("AI Service response body: " + responseBody);
+            
             if (responseBody == null) {
-                System.err.println("AI Service returned null response");
+                System.err.println("=== ERROR: AI Service returned null response ===");
                 return companies;
             }
             
@@ -99,14 +102,26 @@ public class AiServiceClient {
             
             // Extract company domains
             Boolean success = (Boolean) responseBody.get("success");
+            System.out.println("AI Service success flag: " + success);
+            
             if (Boolean.TRUE.equals(success)) {
                 @SuppressWarnings("unchecked")
                 List<String> domains = (List<String>) responseBody.get("company_domains");
+                System.out.println("AI Service company_domains: " + domains);
+                System.out.println("AI Service company_domains is null: " + (domains == null));
+                System.out.println("AI Service company_domains size: " + (domains != null ? domains.size() : 0));
+                
                 if (domains != null) {
                     companies.addAll(domains);
+                    System.out.println("Added " + domains.size() + " domains to companies list");
+                } else {
+                    System.err.println("=== WARNING: company_domains is null despite success=true ===");
                 }
+            } else {
+                System.err.println("=== WARNING: AI Service returned success=false ===");
             }
             
+            System.out.println("=== FINAL RESULT ===");
             System.out.println("AI Service generated " + companies.size() + " company domains: " + companies);
             
         } catch (Exception e) {

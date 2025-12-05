@@ -14,11 +14,11 @@ from pika.exceptions import AMQPConnectionError, AMQPChannelError, StreamLostErr
 import asyncio
 from datetime import datetime
 
-from services.email_generator import EmailGenerator
-from services.llm_service import LLMService
-from services.database_service import DatabaseService
-from services.ai_adapter import AIAdapter
-from models import CompanyInfo, ContactInfo, EmailRequirements
+from src.services.email_generator import EmailGenerator
+from src.services.llm_service import LLMService
+from src.services.database_service import DatabaseService
+from src.services.ai_adapter import AIAdapter
+from src.models import CompanyInfo, ContactInfo, EmailRequirements
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +34,21 @@ class RabbitMQAdapter:
         self.rabbitmq_password = os.getenv("RABBITMQ_PASSWORD", "guest")
         self.rabbitmq_vhost = os.getenv("RABBITMQ_VHOST", "/")
         
-        # Queue names
-        self.request_queue = os.getenv("AI_REQUEST_QUEUE", "ai.email.generation.requests")
-        self.response_queue = os.getenv("AI_RESPONSE_QUEUE", "ai.email.generation.responses")
-        self.error_queue = os.getenv("AI_ERROR_QUEUE", "ai.email.generation.errors")
+        # Queue names for email generation
+        self.email_request_queue = os.getenv("AI_EMAIL_REQUEST_QUEUE", "ai.email.generation.requests")
+        self.email_response_queue = os.getenv("AI_EMAIL_RESPONSE_QUEUE", "ai.email.generation.responses")
+        self.email_error_queue = os.getenv("AI_EMAIL_ERROR_QUEUE", "ai.email.generation.errors")
+        
+        # Queue names for lead generation
+        self.lead_request_queue = os.getenv("AI_LEAD_REQUEST_QUEUE", "ai.leads.generation.requests")
+        self.lead_response_queue = os.getenv("AI_LEAD_RESPONSE_QUEUE", "ai.leads.generation.responses")
+        self.lead_error_queue = os.getenv("AI_LEAD_ERROR_QUEUE", "ai.leads.generation.errors")
+        
+        # Legacy support (defaults to email queue)
+        self.request_queue = os.getenv("AI_REQUEST_QUEUE", self.email_request_queue)
+        self.response_queue = os.getenv("AI_RESPONSE_QUEUE", self.email_response_queue)
+        self.error_queue = os.getenv("AI_ERROR_QUEUE", self.email_error_queue)
+        
         self.dlq_queue = f"{self.request_queue}.dlq"  # Dead letter queue
         
         # Retry settings
@@ -53,6 +64,10 @@ class RabbitMQAdapter:
         self.llm_service = LLMService()
         self.ai_adapter = AIAdapter(self.llm_service)  # AI communication bridge
         self.email_generator = EmailGenerator(self.llm_service)
+        
+        # Initialize prospect service for lead generation
+        from src.services.prospect_service import ProspectService
+        self.prospect_service = ProspectService(self.llm_service)
         
         # Initialize database service for enriching requests
         self.db_service = DatabaseService()
@@ -87,6 +102,7 @@ class RabbitMQAdapter:
     def connect(self):
         """Establish connection to RabbitMQ with retry logic"""
         try:
+            logger.info(f"Attempting to connect to RabbitMQ at {self.rabbitmq_host}:{self.rabbitmq_port}")
             credentials = pika.PlainCredentials(self.rabbitmq_user, self.rabbitmq_password)
             parameters = pika.ConnectionParameters(
                 host=self.rabbitmq_host,
@@ -99,38 +115,61 @@ class RabbitMQAdapter:
                 retry_delay=2
             )
             
+            logger.info("Creating RabbitMQ connection...")
             self.connection = pika.BlockingConnection(parameters)
+            logger.info("Connection established, creating channel...")
             self.channel = self.connection.channel()
             
-            # Declare queues with dead letter exchange
-            # Request queue with DLQ support
+            # Declare email generation queues
             self.channel.queue_declare(
-                queue=self.request_queue,
+                queue=self.email_request_queue,
                 durable=True,
                 arguments={
                     'x-dead-letter-exchange': '',
-                    'x-dead-letter-routing-key': self.dlq_queue,
+                    'x-dead-letter-routing-key': f"{self.email_request_queue}.dlq",
                     'x-message-ttl': 3600000  # 1 hour TTL
                 }
             )
+            self.channel.queue_declare(queue=self.email_response_queue, durable=True)
+            self.channel.queue_declare(queue=self.email_error_queue, durable=True)
+            self.channel.queue_declare(queue=f"{self.email_request_queue}.dlq", durable=True)
             
-            # Response queue
-            self.channel.queue_declare(queue=self.response_queue, durable=True)
+            # Declare lead generation queues
+            self.channel.queue_declare(
+                queue=self.lead_request_queue,
+                durable=True,
+                arguments={
+                    'x-dead-letter-exchange': '',
+                    'x-dead-letter-routing-key': f"{self.lead_request_queue}.dlq",
+                    'x-message-ttl': 3600000  # 1 hour TTL
+                }
+            )
+            self.channel.queue_declare(queue=self.lead_response_queue, durable=True)
+            self.channel.queue_declare(queue=self.lead_error_queue, durable=True)
+            self.channel.queue_declare(queue=f"{self.lead_request_queue}.dlq", durable=True)
             
-            # Error queue
-            self.channel.queue_declare(queue=self.error_queue, durable=True)
-            
-            # Dead letter queue
-            self.channel.queue_declare(queue=self.dlq_queue, durable=True)
+            # Legacy queue support
+            if self.request_queue != self.email_request_queue:
+                self.channel.queue_declare(
+                    queue=self.request_queue,
+                    durable=True,
+                    arguments={
+                        'x-dead-letter-exchange': '',
+                        'x-dead-letter-routing-key': self.dlq_queue,
+                        'x-message-ttl': 3600000
+                    }
+                )
+                self.channel.queue_declare(queue=self.response_queue, durable=True)
+                self.channel.queue_declare(queue=self.error_queue, durable=True)
+                self.channel.queue_declare(queue=self.dlq_queue, durable=True)
             
             # Reset reconnect delay on successful connection
             self.reconnect_delay = 1
             self.reconnect_attempts = 0
             
             logger.info(f"Connected to RabbitMQ at {self.rabbitmq_host}:{self.rabbitmq_port}")
-            logger.info(f"Listening on queue: {self.request_queue}")
-            logger.info(f"Publishing responses to: {self.response_queue}")
-            logger.info(f"Dead letter queue: {self.dlq_queue}")
+            logger.info(f"Email queues - Request: {self.email_request_queue}, Response: {self.email_response_queue}")
+            logger.info(f"Lead queues - Request: {self.lead_request_queue}, Response: {self.lead_response_queue}")
             
             return True
             
@@ -148,9 +187,15 @@ class RabbitMQAdapter:
         with self._lock:
             if self.channel and self.channel.is_open:
                 try:
+                    if self.consumer_tag_email:
+                        self.channel.basic_cancel(self.consumer_tag_email)
+                        logger.info("Cancelled email consumer")
+                    if self.consumer_tag_lead:
+                        self.channel.basic_cancel(self.consumer_tag_lead)
+                        logger.info("Cancelled lead consumer")
                     if self.consumer_tag:
                         self.channel.basic_cancel(self.consumer_tag)
-                        logger.info("Cancelled consumer")
+                        logger.info("Cancelled legacy consumer")
                 except Exception as e:
                     logger.warning(f"Error cancelling consumer: {str(e)}")
             
@@ -249,6 +294,75 @@ class RabbitMQAdapter:
             logger.error(f"Error parsing request: {str(e)}")
             return None
     
+    def _parse_lead_request(self, message_body: str) -> Optional[Dict]:
+        """Parse and validate incoming lead generation request message"""
+        try:
+            request_data = json.loads(message_body)
+            
+            # Extract required fields for lead generation
+            request_id = request_data.get("request_id")
+            criteria_data = request_data.get("criteria", {})
+            max_companies = request_data.get("max_companies", 5)
+            lead_batch_id = request_data.get("lead_batch_id")  # Optional batch ID
+            
+            if not request_id:
+                raise ValueError("Missing required field: request_id")
+            if not criteria_data:
+                raise ValueError("Missing required field: criteria")
+            
+            # Import ProspectCriteria model
+            from src.models import ProspectCriteria
+            
+            return {
+                "request_id": request_id,
+                "criteria": ProspectCriteria(**criteria_data),
+                "max_companies": min(max_companies, 5),  # Enforce max 5
+                "lead_batch_id": lead_batch_id  # Include batch_id in parsed request
+            }
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON in lead request: {str(e)}")
+            return None
+        except Exception as e:
+            logger.error(f"Error parsing lead request: {str(e)}")
+            return None
+    
+    async def _process_lead_generation(self, parsed_request: Dict) -> Dict:
+        """Process lead generation request"""
+        try:
+            logger.info(f"Processing lead generation request_id: {parsed_request['request_id']}")
+            
+            # Generate matching companies using prospect service
+            company_domains = await self.prospect_service.generate_matching_companies(
+                criteria=parsed_request["criteria"],
+                max_companies=parsed_request["max_companies"]
+            )
+            
+            response = {
+                "request_id": parsed_request["request_id"],
+                "success": True,
+                "company_domains": company_domains,
+                "generated_at": datetime.now().isoformat()
+            }
+            
+            # CRITICAL: Include batch_id in response - required by lead-svc to save leads
+            if "lead_batch_id" in parsed_request:
+                response["lead_batch_id"] = parsed_request["lead_batch_id"]
+                logger.info(f"Including lead_batch_id in response: {parsed_request['lead_batch_id']}")
+            else:
+                logger.warning("No lead_batch_id in request - leads won't be saved to database!")
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error generating leads: {str(e)}", exc_info=True)
+            return {
+                "request_id": parsed_request.get("request_id", "unknown"),
+                "success": False,
+                "error": str(e),
+                "generated_at": datetime.now().isoformat()
+            }
+    
     async def _process_general_ai_task(self, input_data: Dict) -> Dict:
         """
         Process a general AI task using the AI adapter.
@@ -337,19 +451,22 @@ class RabbitMQAdapter:
                 )
             )
             
-            logger.info(f"Published response for request_id: {response.get('request_id')}")
+            logger.info(f"Published response to {routing_key} for request_id: {response.get('request_id')}")
             
         except Exception as e:
             logger.error(f"Error publishing response: {str(e)}")
     
-    def _publish_error(self, error_data: Dict):
+    def _publish_error(self, error_data: Dict, error_queue: str = None):
         """Publish error to error queue"""
         try:
+            if error_queue is None:
+                error_queue = self.error_queue
+            
             message = json.dumps(error_data)
             
             self.channel.basic_publish(
                 exchange='',
-                routing_key=self.error_queue,
+                routing_key=error_queue,
                 body=message,
                 properties=pika.BasicProperties(
                     delivery_mode=2,
@@ -357,7 +474,7 @@ class RabbitMQAdapter:
                 )
             )
             
-            logger.error(f"Published error for request_id: {error_data.get('request_id')}")
+            logger.error(f"Published error to {error_queue} for request_id: {error_data.get('request_id')}")
             
         except Exception as e:
             logger.error(f"Error publishing error message: {str(e)}")
@@ -366,39 +483,73 @@ class RabbitMQAdapter:
         """Handle incoming message from RabbitMQ with retry logic"""
         retry_count = properties.headers.get('x-retry-count', 0) if properties.headers else 0
         request_id = "unknown"
+        queue_name = method.routing_key or method.queue or ""
+        is_lead_request = False  # Initialize to avoid NameError in exception handlers
         
         try:
-            logger.info(f"Received message (attempt {retry_count + 1}/{self.max_retries + 1}): {body.decode()[:200]}...")
+            logger.info(f"Received message from queue '{queue_name}' (attempt {retry_count + 1}/{self.max_retries + 1}): {body.decode()[:200]}...")
             
-            # Parse request
-            parsed_request = self._parse_request(body.decode())
-            if not parsed_request:
-                error_data = {
-                    "request_id": "unknown",
-                    "error": "Failed to parse request",
-                    "raw_message": body.decode()[:500],
-                    "timestamp": datetime.now().isoformat()
-                }
-                self._publish_error(error_data)
-                ch.basic_ack(delivery_tag=method.delivery_tag)
-                return
+            # Determine message type based on queue
+            is_lead_request = queue_name == self.lead_request_queue or "lead" in queue_name.lower()
             
-            request_id = parsed_request["request_id"]
-            
-            # Process request asynchronously using shared event loop
-            if self.event_loop is None or self.event_loop.is_closed():
-                self._setup_event_loop()
-            
-            # Run async function in the shared event loop
-            future = asyncio.run_coroutine_threadsafe(
-                self._process_email_generation(parsed_request),
-                self.event_loop
-            )
-            response = future.result(timeout=300)  # 5 minute timeout
+            if is_lead_request:
+                # Parse lead generation request
+                parsed_request = self._parse_lead_request(body.decode())
+                if not parsed_request:
+                    error_data = {
+                        "request_id": "unknown",
+                        "error": "Failed to parse lead generation request",
+                        "raw_message": body.decode()[:500],
+                        "timestamp": datetime.now().isoformat()
+                    }
+                    self._publish_error(error_data, self.lead_error_queue)
+                    ch.basic_ack(delivery_tag=method.delivery_tag)
+                    return
+                
+                request_id = parsed_request.get("request_id", "unknown")
+                
+                # Process lead generation request
+                if self.event_loop is None or self.event_loop.is_closed():
+                    self._setup_event_loop()
+                
+                future = asyncio.run_coroutine_threadsafe(
+                    self._process_lead_generation(parsed_request),
+                    self.event_loop
+                )
+                response = future.result(timeout=300)
+                response_queue = self.lead_response_queue
+                error_queue = self.lead_error_queue
+            else:
+                # Parse email generation request
+                parsed_request = self._parse_request(body.decode())
+                if not parsed_request:
+                    error_data = {
+                        "request_id": "unknown",
+                        "error": "Failed to parse request",
+                        "raw_message": body.decode()[:500],
+                        "timestamp": datetime.now().isoformat()
+                    }
+                    self._publish_error(error_data, self.email_error_queue)
+                    ch.basic_ack(delivery_tag=method.delivery_tag)
+                    return
+                
+                request_id = parsed_request["request_id"]
+                
+                # Process email generation request
+                if self.event_loop is None or self.event_loop.is_closed():
+                    self._setup_event_loop()
+                
+                future = asyncio.run_coroutine_threadsafe(
+                    self._process_email_generation(parsed_request),
+                    self.event_loop
+                )
+                response = future.result(timeout=300)
+                response_queue = self.email_response_queue
+                error_queue = self.email_error_queue
             
             # Publish response
             if response.get("success"):
-                self._publish_response(response)
+                self._publish_response(response, response_queue)
                 ch.basic_ack(delivery_tag=method.delivery_tag)
                 logger.info(f"Successfully processed request_id: {request_id}")
             else:
@@ -416,7 +567,7 @@ class RabbitMQAdapter:
                     time.sleep(self.retry_delay)
                 else:
                     # Max retries reached, send to error queue and acknowledge
-                    self._publish_error(response)
+                    self._publish_error(response, error_queue)
                     ch.basic_ack(delivery_tag=method.delivery_tag)
                     logger.error(f"Max retries reached for request_id: {request_id}, sent to error queue")
             
@@ -427,11 +578,16 @@ class RabbitMQAdapter:
                 "error": "Processing timeout",
                 "timestamp": datetime.now().isoformat()
             }
-            self._publish_error(error_data)
+            error_queue = self.lead_error_queue if is_lead_request else self.email_error_queue
+            self._publish_error(error_data, error_queue)
             ch.basic_ack(delivery_tag=method.delivery_tag)
             
         except Exception as e:
             logger.error(f"Error handling message for request_id: {request_id}: {str(e)}", exc_info=True)
+            
+            # Determine queue type from queue_name if not already set
+            if 'is_lead_request' not in locals():
+                is_lead_request = queue_name == self.lead_request_queue or "lead" in queue_name.lower()
             
             # Check if we should retry
             if retry_count < self.max_retries:
@@ -452,7 +608,8 @@ class RabbitMQAdapter:
                     "error": str(e),
                     "timestamp": datetime.now().isoformat()
                 }
-                self._publish_error(error_data)
+                error_queue = self.lead_error_queue if is_lead_request else self.email_error_queue
+                self._publish_error(error_data, error_queue)
                 try:
                     ch.basic_ack(delivery_tag=method.delivery_tag)
                 except Exception as ack_error:
@@ -504,15 +661,32 @@ class RabbitMQAdapter:
                     # Set QoS to process one message at a time
                     self.channel.basic_qos(prefetch_count=1)
                     
-                    # Start consuming
-                    self.consumer_tag = self.channel.basic_consume(
-                        queue=self.request_queue,
+                    # Start consuming from both email and lead queues
+                    self.consumer_tag_email = self.channel.basic_consume(
+                        queue=self.email_request_queue,
                         on_message_callback=self._handle_message,
                         auto_ack=False  # Manual acknowledgment
                     )
                     
+                    self.consumer_tag_lead = self.channel.basic_consume(
+                        queue=self.lead_request_queue,
+                        on_message_callback=self._handle_message,
+                        auto_ack=False  # Manual acknowledgment
+                    )
+                    
+                    # Legacy queue support
+                    if self.request_queue != self.email_request_queue:
+                        self.consumer_tag = self.channel.basic_consume(
+                            queue=self.request_queue,
+                            on_message_callback=self._handle_message,
+                            auto_ack=False
+                        )
+                    
                     self.is_consuming = True
-                    logger.info("AI Adapter started. Waiting for messages. To exit press CTRL+C")
+                    logger.info("AI Adapter started. Listening on:")
+                    logger.info(f"  - Email queue: {self.email_request_queue}")
+                    logger.info(f"  - Lead queue: {self.lead_request_queue}")
+                    logger.info("Waiting for messages. To exit press CTRL+C")
                 
                 # Start consuming (blocking call)
                 self.channel.start_consuming()
