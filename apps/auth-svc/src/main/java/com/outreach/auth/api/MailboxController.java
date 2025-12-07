@@ -30,8 +30,11 @@ public class MailboxController {
      */
     @GetMapping
     public ResponseEntity<List<MailboxResponse>> getMailboxes(
-            @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+            @RequestAttribute(value = "userId", required = false) Long jwtUserId,
+            @RequestHeader(value = "X-User-Id", required = false) Long headerUserId) {
         
+        Long userId = jwtUserId != null ? jwtUserId : headerUserId;
+
         if (userId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
@@ -49,9 +52,12 @@ public class MailboxController {
      */
     @PostMapping
     public ResponseEntity<?> addMailbox(
-            @RequestHeader(value = "X-User-Id", required = false) Long userId,
+            @RequestAttribute(value = "userId", required = false) Long jwtUserId,
+            @RequestHeader(value = "X-User-Id", required = false) Long headerUserId,
             @Valid @RequestBody AddMailboxRequest request) {
         
+        Long userId = jwtUserId != null ? jwtUserId : headerUserId;
+
         if (userId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
@@ -78,9 +84,12 @@ public class MailboxController {
     @PatchMapping("/{id}/status")
     public ResponseEntity<?> updateStatus(
             @PathVariable Long id,
-            @RequestHeader(value = "X-User-Id", required = false) Long userId,
+            @RequestAttribute(value = "userId", required = false) Long jwtUserId,
+            @RequestHeader(value = "X-User-Id", required = false) Long headerUserId,
             @RequestBody Map<String, String> body) {
         
+        Long userId = jwtUserId != null ? jwtUserId : headerUserId;
+
         if (userId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
@@ -103,8 +112,11 @@ public class MailboxController {
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteMailbox(
             @PathVariable Long id,
-            @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+            @RequestAttribute(value = "userId", required = false) Long jwtUserId,
+            @RequestHeader(value = "X-User-Id", required = false) Long headerUserId) {
         
+        Long userId = jwtUserId != null ? jwtUserId : headerUserId;
+
         if (userId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
@@ -124,8 +136,11 @@ public class MailboxController {
     @PostMapping("/{id}/test")
     public ResponseEntity<?> testConnection(
             @PathVariable Long id,
-            @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+            @RequestAttribute(value = "userId", required = false) Long jwtUserId,
+            @RequestHeader(value = "X-User-Id", required = false) Long headerUserId) {
         
+        Long userId = jwtUserId != null ? jwtUserId : headerUserId;
+
         if (userId == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }

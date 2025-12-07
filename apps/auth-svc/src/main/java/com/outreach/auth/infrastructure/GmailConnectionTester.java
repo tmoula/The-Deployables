@@ -24,8 +24,8 @@ public class GmailConnectionTester {
         props.put("mail.imaps.host", GMAIL_IMAP_HOST);
         props.put("mail.imaps.port", GMAIL_IMAP_PORT);
         props.put("mail.imaps.ssl.enable", "true");
-        props.put("mail.imaps.timeout", "5000");
-        props.put("mail.imaps.connectiontimeout", "5000");
+        props.put("mail.imaps.timeout", "15000");
+        props.put("mail.imaps.connectiontimeout", "15000");
         
         Session session = Session.getInstance(props);
         Store store = null;

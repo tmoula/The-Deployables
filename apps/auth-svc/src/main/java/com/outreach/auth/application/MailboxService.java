@@ -42,12 +42,16 @@ public class MailboxService {
     @Transactional
     public Mailbox addMailbox(Long userId, String email, String displayName, String appPassword) {
         // Test connection first
+        System.out.println("Adding mailbox: " + email + " for user " + userId);
         try {
             boolean connected = connectionTester.testConnection(email, appPassword);
             if (!connected) {
+                System.err.println("Initial connection test failed for " + email);
                 throw new IllegalArgumentException("Failed to connect to Gmail. Please check your credentials.");
             }
+            System.out.println("Initial connection test successful");
         } catch (MessagingException e) {
+            System.err.println("MessagingException during add: " + e.getMessage());
             throw new IllegalArgumentException("Failed to connect to Gmail: " + e.getMessage());
         }
         
@@ -64,16 +68,20 @@ public class MailboxService {
      */
     @Transactional
     public Mailbox updateStatus(Long mailboxId, Long userId, MailboxStatus status) {
+        System.out.println("Updating status for mailbox " + mailboxId + " to " + status);
         Mailbox mailbox = mailboxRepository.findById(mailboxId)
             .orElseThrow(() -> new IllegalArgumentException("Mailbox not found"));
         
         // Verify ownership
         if (!mailbox.getUserId().equals(userId)) {
+            System.err.println("Unauthorized update attempt. Owner: " + mailbox.getUserId() + ", Requestor: " + userId);
             throw new IllegalArgumentException("Unauthorized access to mailbox");
         }
         
         mailbox.setStatus(status);
-        return mailboxRepository.save(mailbox);
+        Mailbox saved = mailboxRepository.save(mailbox);
+        System.out.println("Status updated successfully");
+        return saved;
     }
     
     /**
@@ -96,19 +104,26 @@ public class MailboxService {
      * Test mailbox connection
      */
     public boolean testMailboxConnection(Long mailboxId, Long userId) {
+        System.out.println("Testing connection for mailbox " + mailboxId + " user " + userId);
         Mailbox mailbox = mailboxRepository.findById(mailboxId)
             .orElseThrow(() -> new IllegalArgumentException("Mailbox not found"));
         
         // Verify ownership
         if (!mailbox.getUserId().equals(userId)) {
+            System.err.println("Unauthorized test attempt");
             throw new IllegalArgumentException("Unauthorized access to mailbox");
         }
         
         // Decrypt password and test
-        String appPassword = encryptor.decrypt(mailbox.getEncryptedPassword());
         try {
-            return connectionTester.testConnection(mailbox.getEmail(), appPassword);
-        } catch (MessagingException e) {
+            String appPassword = encryptor.decrypt(mailbox.getEncryptedPassword());
+            System.out.println("Password decrypted successfully. Testing IMAP...");
+            boolean result = connectionTester.testConnection(mailbox.getEmail(), appPassword);
+            System.out.println("Connection test result: " + result);
+            return result;
+        } catch (Exception e) {
+            System.err.println("Test failed with error: " + e.getMessage());
+            e.printStackTrace();
             return false;
         }
     }

@@ -6,5 +6,6 @@ public record AuthTokenResponse(
     Long expiresIn,
     String email,
     String firstName,
-    String lastName
+    String lastName,
+    Long userId
 ) {}

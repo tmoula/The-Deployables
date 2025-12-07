@@ -86,6 +86,9 @@ export const authService = {
       this.setToken(authResponse.accessToken);
       this.setUserEmail(authResponse.email);
       this.setUserName(authResponse.firstName, authResponse.lastName);
+      if (authResponse.userId) {
+        localStorage.setItem('userId', authResponse.userId);
+      }
 
       console.log('✅ Login successful:', authResponse.email);
       return authResponse;

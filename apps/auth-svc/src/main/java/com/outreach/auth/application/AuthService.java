@@ -11,9 +11,9 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
-    private final com.outreach.auth.infrastructure.EmailService emailService;
+    private final EmailService emailService;
     
-    public AuthService(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtTokenProvider jwtTokenProvider, com.outreach.auth.infrastructure.EmailService emailService) {
+    public AuthService(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtTokenProvider jwtTokenProvider, EmailService emailService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtTokenProvider = jwtTokenProvider;
@@ -35,6 +35,11 @@ public class AuthService {
         
         User savedUser = userRepository.save(user);
         
+        // DEBUG: Log verification code for local development
+        System.out.println("============================================");
+        System.out.println("DEBUG: Verification Code: " + code);
+        System.out.println("============================================");
+
         // Send verification email
         try {
             emailService.sendVerificationEmail(email, code);
@@ -63,8 +68,8 @@ public class AuthService {
             throw new IllegalArgumentException("Invalid password");
         }
         
-        String token = jwtTokenProvider.generateToken(email);
-        return new AuthTokenResponse(token, "Bearer", 86400L, email, user.getFirstName(), user.getLastName());
+        String token = jwtTokenProvider.generateToken(email, user.getId());
+        return new AuthTokenResponse(token, "Bearer", 86400L, email, user.getFirstName(), user.getLastName(), user.getId());
     }
 
     public void verify(String email, String code) {
