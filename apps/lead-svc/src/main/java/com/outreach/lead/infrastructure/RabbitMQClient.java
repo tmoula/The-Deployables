@@ -8,12 +8,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.outreach.lead.domain.ProspectCriteria;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 
 @Component
 public class RabbitMQClient {
@@ -39,13 +37,13 @@ public class RabbitMQClient {
     }
     
     /**
-     * Send lead generation request to RabbitMQ and wait for response
+     * Send lead generation request to RabbitMQ (async - does not wait for response)
+     * The response will be handled by RabbitMQResponseListener which updates the batch status
      * @param criteria Prospect search criteria
      * @param maxCompanies Maximum number of companies to return
      * @param batchId Lead batch ID to associate with this request
-     * @return List of company domains
      */
-    public List<String> generateMatchingCompanies(ProspectCriteria criteria, int maxCompanies, Integer batchId) {
+    public void generateMatchingCompanies(ProspectCriteria criteria, int maxCompanies, Integer batchId) {
         try {
             // Generate unique request ID
             String requestId = UUID.randomUUID().toString();
@@ -75,52 +73,22 @@ public class RabbitMQClient {
                 requestBody.put("lead_batch_id", batchId);
             }
             
-            System.out.println("=== RABBITMQ CLIENT: Publishing lead generation request ===");
+            System.out.println("=== RABBITMQ CLIENT: Publishing lead generation request (async) ===");
             System.out.println("Request ID: " + requestId);
             System.out.println("Batch ID: " + batchId);
             System.out.println("Queue: " + leadRequestQueue);
             System.out.println("Request body: " + objectMapper.writeValueAsString(requestBody));
             
-            // Create future for response
-            CompletableFuture<Map<String, Object>> future = new CompletableFuture<>();
-            pendingRequests.put(requestId, future);
-            
-            // Publish request
+            // Publish request (non-blocking)
             rabbitTemplate.convertAndSend(leadRequestQueue, requestBody);
             
-            System.out.println("=== RABBITMQ CLIENT: Waiting for response (timeout: 60s) ===");
+            System.out.println("=== RABBITMQ CLIENT: Request published successfully. Response will be handled by RabbitMQResponseListener ===");
             
-            // Wait for response (with timeout)
-            Map<String, Object> response = future.get(60, TimeUnit.SECONDS);
-            pendingRequests.remove(requestId);
-            
-            System.out.println("=== RABBITMQ CLIENT: Received response ===");
-            System.out.println("Response: " + objectMapper.writeValueAsString(response));
-            
-            // Extract company domains
-            if (Boolean.TRUE.equals(response.get("success"))) {
-                @SuppressWarnings("unchecked")
-                List<String> domains = (List<String>) response.get("company_domains");
-                if (domains != null) {
-                    System.out.println("AI Service generated " + domains.size() + " company domains via RabbitMQ: " + domains);
-                    return domains;
-                }
-            } else {
-                String error = (String) response.get("error");
-                System.err.println("=== RABBITMQ CLIENT ERROR ===");
-                System.err.println("Error: " + error);
-                throw new RuntimeException("AI Service Error: " + error);
-            }
-            
-            return List.of();
-            
-        } catch (java.util.concurrent.TimeoutException e) {
-            System.err.println("=== RABBITMQ CLIENT: Timeout waiting for response ===");
-            throw new RuntimeException("Timeout waiting for AI service response via RabbitMQ", e);
         } catch (Exception e) {
-            System.err.println("Error calling AI Service via RabbitMQ: " + e.getMessage());
+            System.err.println("=== ERROR: Failed to publish lead generation request to RabbitMQ ===");
+            System.err.println("Error: " + e.getMessage());
             e.printStackTrace();
-            return List.of();
+            throw new RuntimeException("Failed to publish lead generation request to RabbitMQ", e);
         }
     }
     

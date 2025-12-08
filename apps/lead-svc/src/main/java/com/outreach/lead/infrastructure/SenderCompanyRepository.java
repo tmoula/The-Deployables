@@ -11,3 +11,4 @@ public interface SenderCompanyRepository extends JpaRepository<SenderCompanyEnti
     Optional<SenderCompanyEntity> findByUserId(Integer userId);
 }
 
+

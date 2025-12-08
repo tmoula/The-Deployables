@@ -13,3 +13,4 @@ public interface LeadRepository extends JpaRepository<LeadEntity, Integer> {
     List<LeadEntity> findByUserIdAndBatchId(Integer userId, Integer batchId);
 }
 
+

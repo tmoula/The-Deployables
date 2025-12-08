@@ -7,6 +7,9 @@ import com.outreach.campaign.infrastructure.CampaignRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -17,22 +20,73 @@ import java.util.stream.Collectors;
 public class CampaignService {
 
     private final CampaignRepository campaignRepository;
+    private final CampaignLeadService campaignLeadService;
+    private final ObjectMapper objectMapper;
 
-    public CampaignService(CampaignRepository campaignRepository) {
+    public CampaignService(CampaignRepository campaignRepository, CampaignLeadService campaignLeadService) {
         this.campaignRepository = campaignRepository;
+        this.campaignLeadService = campaignLeadService;
+        this.objectMapper = new ObjectMapper();
+    }
+    
+    private List<String> parseCsvColumns(String csvColumnsJson) {
+        if (csvColumnsJson == null || csvColumnsJson.trim().isEmpty()) {
+            return new ArrayList<>();
+        }
+        try {
+            return objectMapper.readValue(csvColumnsJson, new TypeReference<List<String>>() {});
+        } catch (Exception e) {
+            System.err.println("Error parsing CSV columns JSON: " + e.getMessage());
+            return new ArrayList<>();
+        }
     }
 
     @Transactional
-    public Campaign createCampaign(Integer userId, String name, String description, List<Lead> leads) {
+    public Campaign createCampaign(Integer userId, String name, String description, List<Lead> leads, String csvFilename, String csvColumnsJson) {
+        // Check for existing campaign with same name to prevent duplicates
+        Optional<CampaignEntity> existing = campaignRepository.findByUserIdAndName(userId, name);
+        if (existing.isPresent()) {
+            System.out.println("Campaign with name '" + name + "' already exists for user_id: " + userId + ", returning existing campaign");
+            CampaignEntity existingEntity = existing.get();
+            // Update CSV info if provided
+            if (csvFilename != null) {
+                existingEntity.setCsvFilename(csvFilename);
+            }
+            if (csvColumnsJson != null) {
+                existingEntity.setCsvColumns(csvColumnsJson);
+            }
+            existingEntity = campaignRepository.save(existingEntity);
+            List<String> csvColumns = parseCsvColumns(existingEntity.getCsvColumns());
+            long leadCount = campaignLeadService.getCampaignLeadCount(existingEntity.getId());
+            return new Campaign(
+                    String.valueOf(existingEntity.getId()),
+                    existingEntity.getName(),
+                    description,
+                    Campaign.CampaignStatus.valueOf(existingEntity.getStatus().toUpperCase()),
+                    existingEntity.getCreatedAt(),
+                    LocalDateTime.now(),
+                    new ArrayList<>(),
+                    (int) leadCount,
+                    0, 0, 0,
+                    existingEntity.getCsvFilename(),
+                    csvColumns,
+                    existingEntity.getEmailSubject(),
+                    existingEntity.getEmailBody()
+            );
+        }
+        
         CampaignEntity entity = new CampaignEntity();
         entity.setName(name);
         entity.setStatus("draft");
         entity.setUserId(userId);
         entity.setCreatedAt(LocalDateTime.now());
-        System.out.println("Creating campaign '" + name + "' for user_id: " + userId);
+        entity.setCsvFilename(csvFilename);
+        entity.setCsvColumns(csvColumnsJson);
+        System.out.println("Creating campaign '" + name + "' for user_id: " + userId + (csvFilename != null ? " with CSV: " + csvFilename : ""));
         entity = campaignRepository.save(entity);
         System.out.println("Campaign created with id: " + entity.getId() + ", user_id: " + entity.getUserId());
 
+        List<String> csvColumns = parseCsvColumns(csvColumnsJson);
         return new Campaign(
                 String.valueOf(entity.getId()),
                 name,
@@ -44,7 +98,11 @@ public class CampaignService {
                 leads != null ? leads.size() : 0,
                 0,
                 0,
-                0
+                0,
+                csvFilename,
+                csvColumns,
+                null,
+                null
         );
     }
 
@@ -54,19 +112,28 @@ public class CampaignService {
         System.out.println("Found " + entities.size() + " campaigns for user_id: " + userId);
 
         return entities.stream()
-                .map(entity -> new Campaign(
-                        String.valueOf(entity.getId()),
-                        entity.getName(),
-                        "",
-                        Campaign.CampaignStatus.valueOf(entity.getStatus().toUpperCase()),
-                        entity.getCreatedAt(),
-                        entity.getCreatedAt(),
-                        new ArrayList<>(),
-                        0,
-                        0,
-                        0,
-                        0
-                ))
+                .map(entity -> {
+                    // Get lead count from persisted campaign_leads
+                    long leadCount = campaignLeadService.getCampaignLeadCount(entity.getId());
+                    List<String> csvColumns = parseCsvColumns(entity.getCsvColumns());
+                    return new Campaign(
+                            String.valueOf(entity.getId()),
+                            entity.getName(),
+                            "",
+                            Campaign.CampaignStatus.valueOf(entity.getStatus().toUpperCase()),
+                            entity.getCreatedAt(),
+                            entity.getCreatedAt(),
+                            new ArrayList<>(),
+                            (int) leadCount,
+                            0,
+                            0,
+                            0,
+                            entity.getCsvFilename(),
+                            csvColumns,
+                            entity.getEmailSubject(),
+                            entity.getEmailBody()
+                    );
+                })
                 .collect(Collectors.toList());
     }
 
@@ -76,6 +143,8 @@ public class CampaignService {
             Optional<CampaignEntity> entityOpt = campaignRepository.findById(campaignId);
             if (entityOpt.isPresent()) {
                 CampaignEntity e = entityOpt.get();
+                long leadCount = campaignLeadService.getCampaignLeadCount(e.getId());
+                List<String> csvColumns = parseCsvColumns(e.getCsvColumns());
                 return Optional.of(new Campaign(
                         String.valueOf(e.getId()),
                         e.getName(),
@@ -84,10 +153,14 @@ public class CampaignService {
                         e.getCreatedAt(),
                         e.getCreatedAt(),
                         new ArrayList<>(),
+                        (int) leadCount,
                         0,
                         0,
                         0,
-                        0
+                        e.getCsvFilename(),
+                        csvColumns,
+                        e.getEmailSubject(),
+                        e.getEmailBody()
                 ));
             }
         } catch (NumberFormatException ignored) {
@@ -110,6 +183,9 @@ public class CampaignService {
 
         entity.setStatus(status.name().toLowerCase());
         campaignRepository.save(entity);
+        
+        long leadCount = campaignLeadService.getCampaignLeadCount(entity.getId());
+        List<String> csvColumns = parseCsvColumns(entity.getCsvColumns());
 
         return new Campaign(
                 String.valueOf(entity.getId()),
@@ -119,10 +195,14 @@ public class CampaignService {
                 entity.getCreatedAt(),
                 LocalDateTime.now(),
                 new ArrayList<>(),
+                (int) leadCount,
                 0,
                 0,
                 0,
-                0
+                entity.getCsvFilename(),
+                csvColumns,
+                entity.getEmailSubject(),
+                entity.getEmailBody()
         );
     }
 
@@ -157,6 +237,19 @@ public class CampaignService {
         System.out.println("DELETE APPROVED: Deleting campaign_id: " + campaignId);
         campaignRepository.delete(entity);
         System.out.println("Campaign deleted successfully");
+    }
+
+    public void saveCampaignEmail(Integer campaignId, Integer userId, String emailSubject, String emailBody) {
+        CampaignEntity campaign = campaignRepository.findById(campaignId)
+            .orElseThrow(() -> new RuntimeException("Campaign not found"));
+        
+        if (!campaign.getUserId().equals(userId)) {
+            throw new RuntimeException("Unauthorized");
+        }
+        
+        campaign.setEmailSubject(emailSubject);
+        campaign.setEmailBody(emailBody);
+        campaignRepository.save(campaign);
     }
 }
 

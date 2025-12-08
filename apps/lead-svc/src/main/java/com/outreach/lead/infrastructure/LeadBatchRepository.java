@@ -13,3 +13,4 @@ public interface LeadBatchRepository extends JpaRepository<LeadBatchEntity, Inte
     Optional<LeadBatchEntity> findByIdAndUserId(Integer id, Integer userId);
 }
 
+

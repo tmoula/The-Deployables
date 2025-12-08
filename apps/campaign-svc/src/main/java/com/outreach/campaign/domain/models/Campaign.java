@@ -14,7 +14,11 @@ public record Campaign(
         Integer totalLeads,
         Integer sentCount,
         Integer openedCount,
-        Integer repliedCount
+        Integer repliedCount,
+        String csvFilename,
+        List<String> csvColumns,
+        String emailSubject,
+        String emailBody
 ) {
     public enum CampaignStatus {
         DRAFT, RUNNING, PAUSED, COMPLETED

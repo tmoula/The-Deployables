@@ -11,6 +11,7 @@ public interface CampaignRepository extends JpaRepository<CampaignEntity, Intege
     List<CampaignEntity> findByUserId(Integer userId);
     List<CampaignEntity> findByStatus(String status);
     Optional<CampaignEntity> findByIdAndUserId(Integer id, Integer userId);
+    Optional<CampaignEntity> findByUserIdAndName(Integer userId, String name);
 }
 
 

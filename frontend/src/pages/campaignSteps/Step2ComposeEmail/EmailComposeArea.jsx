@@ -9,7 +9,8 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { SketchPicker } from 'react-color';
 import { campaignApi } from '../../../services/campaignApi';
 
-const AVAILABLE_VARIABLES = [
+// Base variables that are always available
+const BASE_VARIABLES = [
   { key: 'firstName', label: 'First Name', icon: User },
   { key: 'lastName', label: 'Last Name', icon: User },
   { key: 'company', label: 'Company', icon: Building2 },
@@ -20,6 +21,25 @@ const AVAILABLE_VARIABLES = [
   { key: 'personalizationHook', label: 'Personalization Hook', icon: FileText },
 ];
 
+// Helper function to convert CSV column name to variable key
+const columnToVariableKey = (columnName) => {
+  return columnName
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/[^a-z0-9_]/g, '');
+};
+
+// Helper function to get icon for CSV column (default to FileText)
+const getColumnIcon = (columnName) => {
+  const lower = columnName.toLowerCase();
+  if (lower.includes('name') || lower.includes('first') || lower.includes('last')) return User;
+  if (lower.includes('company') || lower.includes('business')) return Building2;
+  if (lower.includes('position') || lower.includes('title') || lower.includes('role')) return Briefcase;
+  if (lower.includes('email') || lower.includes('mail')) return Mail;
+  if (lower.includes('domain') || lower.includes('website') || lower.includes('url')) return Hash;
+  return FileText;
+};
+
 export default function EmailComposeArea({
   emailSubject,
   setEmailSubject,
@@ -28,7 +48,8 @@ export default function EmailComposeArea({
   campaignName,
   campaignContext,
   campaignId,
-  contactId
+  contactId,
+  csvColumns = []
 }) {
   const editorRef = useRef(null);
   const [isEditorFocused, setIsEditorFocused] = useState(false);
@@ -48,8 +69,55 @@ export default function EmailComposeArea({
   const [highlightPickerColor, setHighlightPickerColor] = useState({ hex: '#FEF08A' });
   const [contactData, setContactData] = useState(null);
   const [previewKey, setPreviewKey] = useState(0); // Used to refresh preview with new spintax
+  const [previewData, setPreviewData] = useState(null); // Rendered preview from backend
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState(null);
+  
+  // Autocomplete state
+  const [showAutocomplete, setShowAutocomplete] = useState(false);
+  const [autocompleteSuggestions, setAutocompleteSuggestions] = useState([]);
+  const [autocompletePrefix, setAutocompletePrefix] = useState('');
+  const [autocompletePosition, setAutocompletePosition] = useState({ top: 0, left: 0 });
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0);
+  const [autocompleteTriggerIndex, setAutocompleteTriggerIndex] = useState(-1);
+  const [autocompleteField, setAutocompleteField] = useState(null); // 'subject' or 'body'
+  const autocompleteRef = useRef(null);
 
-  // Close color pickers when clicking outside
+  // Generate variables from CSV columns
+  const csvVariables = csvColumns.map(column => ({
+    key: columnToVariableKey(column),
+    label: column,
+    icon: getColumnIcon(column),
+    isFromCsv: true
+  }));
+  
+  // Merge base variables with CSV variables (CSV takes precedence if duplicate keys)
+  const AVAILABLE_VARIABLES = [
+    ...BASE_VARIABLES.filter(baseVar => 
+      !csvVariables.some(csvVar => csvVar.key === baseVar.key)
+    ),
+    ...csvVariables
+  ];
+  
+  // Get all variable keys for autocomplete (use original CSV column names or variable keys)
+  const getAllVariableKeys = () => {
+    const keys = [];
+    // Add CSV column names (original format)
+    csvColumns.forEach(col => {
+      keys.push(col); // Original column name
+      keys.push(columnToVariableKey(col)); // Normalized key
+    });
+    // Add base variable keys
+    BASE_VARIABLES.forEach(v => {
+      if (!keys.includes(v.key)) {
+        keys.push(v.key);
+      }
+    });
+    return [...new Set(keys)]; // Remove duplicates
+  };
+
+  // Close color pickers and autocomplete when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (showColorPicker && !event.target.closest('.color-picker-container')) {
@@ -58,13 +126,19 @@ export default function EmailComposeArea({
       if (showHighlightPicker && !event.target.closest('.highlight-picker-container')) {
         setShowHighlightPicker(false);
       }
+      if (showAutocomplete && autocompleteRef.current && !autocompleteRef.current.contains(event.target)) {
+        // Don't close if clicking on the input/editor itself
+        if (!event.target.closest('input') && !event.target.closest('[contenteditable="true"]')) {
+          setShowAutocomplete(false);
+        }
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showColorPicker, showHighlightPicker]);
+  }, [showColorPicker, showHighlightPicker, showAutocomplete]);
 
   // Calculate stats
   const getTextStats = (html) => {
@@ -311,11 +385,263 @@ Best regards,<br>
     };
   }, [emailSubject, emailContent, campaignName, campaignContext, generateAIFeedback]);
 
+  // Autocomplete: Check for {{ trigger and show suggestions
+  const checkAutocomplete = (text, cursorPosition, inputElement, fieldType) => {
+    if (!text || cursorPosition === null) {
+      setShowAutocomplete(false);
+      setAutocompleteField(null);
+      return;
+    }
+    
+    // Find the last {{ before cursor
+    const textBeforeCursor = text.substring(0, cursorPosition);
+    const triggerIndex = textBeforeCursor.lastIndexOf('{{');
+    
+    if (triggerIndex === -1) {
+      setShowAutocomplete(false);
+      setAutocompleteField(null);
+      return;
+    }
+    
+    // Check if there's already a closing }}
+    const textAfterTrigger = textBeforeCursor.substring(triggerIndex + 2);
+    if (textAfterTrigger.includes('}}')) {
+      setShowAutocomplete(false);
+      setAutocompleteField(null);
+      return;
+    }
+    
+    // Extract prefix (what user typed after {{)
+    const prefix = textAfterTrigger.trim();
+    
+    // Get all variable keys
+    const allVariables = getAllVariableKeys();
+    
+    // Filter variables by prefix
+    const suggestions = allVariables.filter(v => 
+      v.toLowerCase().startsWith(prefix.toLowerCase())
+    );
+    
+    if (suggestions.length > 0) {
+      setAutocompletePrefix(prefix);
+      setAutocompleteSuggestions(suggestions);
+      setAutocompleteTriggerIndex(triggerIndex);
+      setSelectedSuggestionIndex(0);
+      setAutocompleteField(fieldType); // Track which field is active
+      setShowAutocomplete(true);
+      
+      // Calculate dropdown position
+      if (inputElement) {
+        const rect = inputElement.getBoundingClientRect();
+        // For input, estimate position based on cursor
+        const textBeforeCursorWidth = getTextWidth(textBeforeCursor, inputElement);
+        setAutocompletePosition({
+          top: rect.bottom + 5,
+          left: rect.left + textBeforeCursorWidth
+        });
+      } else if (editorRef.current) {
+        // For contentEditable, use selection position relative to editor container
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0) {
+          const range = selection.getRangeAt(0);
+          const editorRect = editorRef.current.getBoundingClientRect();
+          const rangeRect = range.getBoundingClientRect();
+          setAutocompletePosition({
+            top: rangeRect.bottom - editorRect.top + 5,
+            left: rangeRect.left - editorRect.left
+          });
+        }
+      }
+    } else {
+      setShowAutocomplete(false);
+      setAutocompleteField(null);
+    }
+  };
+  
+  // Helper to estimate text width (for input positioning)
+  const getTextWidth = (text, element) => {
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    const style = window.getComputedStyle(element);
+    context.font = `${style.fontSize} ${style.fontFamily}`;
+    return context.measureText(text).width;
+  };
+  
+  // Apply autocomplete suggestion - simplified and more reliable
+  const applySuggestion = (selectedVar, isSubject = false) => {
+    if (isSubject) {
+      const input = document.activeElement;
+      if (input && input.tagName === 'INPUT') {
+        const value = input.value;
+        const cursor = input.selectionStart || value.length;
+        const before = value.substring(0, autocompleteTriggerIndex);
+        const after = value.substring(cursor);
+        const newValue = `${before}{{${selectedVar}}}${after}`;
+        
+        setEmailSubject(newValue);
+        
+        // Move cursor after }}
+        setTimeout(() => {
+          const newInput = document.activeElement;
+          if (newInput && newInput.tagName === 'INPUT') {
+            const newCursorPos = before.length + selectedVar.length + 4; // {{ + var + }}
+            newInput.setSelectionRange(newCursorPos, newCursorPos);
+            // Re-check autocomplete in case user continues typing
+            checkAutocomplete(newValue, newCursorPos, newInput, 'subject');
+          }
+        }, 0);
+      }
+    } else {
+      // For contentEditable - simpler approach that preserves flow
+      if (editorRef.current) {
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0) {
+          const range = selection.getRangeAt(0);
+          
+          // Get current text node and offset
+          let textNode = range.startContainer;
+          let offset = range.startOffset;
+          
+          // Ensure we're in a text node
+          if (textNode.nodeType !== Node.TEXT_NODE) {
+            // Find the text node at this position
+            if (textNode.childNodes.length > 0 && offset < textNode.childNodes.length) {
+              textNode = textNode.childNodes[offset];
+              offset = 0;
+            } else {
+              // Find nearest text node
+              const walker = document.createTreeWalker(
+                textNode,
+                NodeFilter.SHOW_TEXT,
+                null
+              );
+              textNode = walker.nextNode() || editorRef.current;
+              offset = 0;
+            }
+          }
+          
+          // Get the text content of the current node
+          const nodeText = textNode.textContent;
+          
+          // Calculate where {{ starts relative to this node
+          // We need to find the absolute position of {{ in the full text
+          const fullText = editorRef.current.textContent || editorRef.current.innerText;
+          
+          // Calculate absolute position of current cursor
+          let absoluteCursor = 0;
+          const allTextNodes = [];
+          const nodeWalker = document.createTreeWalker(
+            editorRef.current,
+            NodeFilter.SHOW_TEXT,
+            null
+          );
+          let n;
+          while (n = nodeWalker.nextNode()) {
+            allTextNodes.push(n);
+            if (n === textNode) {
+              absoluteCursor += offset;
+              break;
+            }
+            absoluteCursor += n.textContent.length;
+          }
+          
+          // Find {{ trigger in full text
+          const textBeforeCursor = fullText.substring(0, absoluteCursor);
+          const triggerIndex = textBeforeCursor.lastIndexOf('{{');
+          
+          if (triggerIndex !== -1) {
+            // Calculate which text node contains the trigger
+            let triggerNode = null;
+            let triggerOffset = 0;
+            let currentPos = 0;
+            
+            for (const tn of allTextNodes) {
+              const nodeLength = tn.textContent.length;
+              if (currentPos + nodeLength > triggerIndex) {
+                triggerNode = tn;
+                triggerOffset = triggerIndex - currentPos;
+                break;
+              }
+              currentPos += nodeLength;
+            }
+            
+            if (triggerNode) {
+              // Calculate what to replace - simpler approach
+              const charsToRemove = absoluteCursor - triggerIndex;
+              const nodeText = triggerNode.textContent;
+              const beforeText = nodeText.substring(0, triggerOffset);
+              const afterText = nodeText.substring(triggerOffset + charsToRemove);
+              
+              // Update the trigger node - this preserves formatting
+              triggerNode.textContent = beforeText + `{{${selectedVar}}}` + afterText;
+              
+              // Update state
+              setEmailContent(editorRef.current.innerHTML);
+              
+              // Move cursor after }}
+              setTimeout(() => {
+                const newSelection = window.getSelection();
+                if (newSelection && triggerNode) {
+                  const newOffset = triggerOffset + selectedVar.length + 4; // {{ + var + }}
+                  const newRange = document.createRange();
+                  newRange.setStart(triggerNode, Math.min(newOffset, triggerNode.textContent.length));
+                  newRange.setEnd(triggerNode, Math.min(newOffset, triggerNode.textContent.length));
+                  newSelection.removeAllRanges();
+                  newSelection.addRange(newRange);
+                  
+                  // Re-check autocomplete
+                  const newFullText = editorRef.current.textContent || editorRef.current.innerText;
+                  const newAbsoluteCursor = currentPos + newOffset;
+                  checkAutocomplete(newFullText, newAbsoluteCursor, null, 'body');
+                }
+              }, 10);
+            }
+          }
+        }
+      }
+    }
+    
+    setShowAutocomplete(false);
+  };
+  
+  // Handle keyboard navigation in autocomplete
+  const handleAutocompleteKeyDown = (e, isSubject = false) => {
+    if (!showAutocomplete) return;
+    
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedSuggestionIndex(prev => 
+        Math.min(prev + 1, autocompleteSuggestions.length - 1)
+      );
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedSuggestionIndex(prev => Math.max(prev - 1, 0));
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault();
+      if (autocompleteSuggestions[selectedSuggestionIndex]) {
+        applySuggestion(autocompleteSuggestions[selectedSuggestionIndex], isSubject);
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setShowAutocomplete(false);
+    }
+  };
+
   // Handle editor content changes
   const handleEditorChange = () => {
     if (editorRef.current) {
       const content = editorRef.current.innerHTML;
       setEmailContent(content);
+      
+      // Check for autocomplete trigger
+      const textContent = editorRef.current.textContent || editorRef.current.innerText;
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        const cursor = range.startOffset;
+        checkAutocomplete(textContent, cursor, null, 'body');
+      }
+      
       // Auto-save to history on typing (debounced)
       if (isEditorFocused) {
         const timeoutId = setTimeout(() => {
@@ -389,34 +715,114 @@ Best regards,<br>
   // Replace variables with actual contact/company data from CSV
   // This runs AFTER spintax expansion, so {{variable}} should be intact
   const replaceVariables = (text) => {
-    if (!text || !contactData) return text;
+    if (!text) return text;
     
-    // Use actual CSV data from contactData
-    const replacements = {
-      '{{firstName}}': contactData.firstName || '',
-      '{{lastName}}': contactData.lastName || '',
-      '{{company}}': contactData.companyName || '',
-      '{{position}}': contactData.jobTitle || '',
-      '{{email}}': contactData.email || '',
-      '{{domain}}': (contactData.email && contactData.email.includes('@')) ? contactData.email.split('@')[1] : '',
-      '{{industry}}': contactData.companyIndustry || '',
-      '{{personalizationHook}}': contactData.personalizationNotes || ''
-    };
+    // Build replacements map from contactData (includes all CSV columns)
+    const replacements = {};
+    
+    if (contactData) {
+      // Add all fields from contactData (which includes CSV columns)
+      Object.keys(contactData).forEach(key => {
+        const value = contactData[key];
+        if (value != null) {
+          // Add with original key name
+          replacements[`{{${key}}}`] = String(value);
+          // Add normalized versions
+          const normalized = key.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+          replacements[`{{${normalized}}}`] = String(value);
+          replacements[`{{${normalized.replace(/_/g, '')}}}`] = String(value); // first_name -> firstname
+        }
+      });
+      
+      // Add standard mappings for backward compatibility
+      replacements['{{firstName}}'] = contactData.firstName || contactData.first_name || '';
+      replacements['{{lastName}}'] = contactData.lastName || contactData.last_name || '';
+      replacements['{{company}}'] = contactData.companyName || contactData.company_name || contactData.company || '';
+      replacements['{{position}}'] = contactData.jobTitle || contactData.job_title || contactData.position || '';
+      replacements['{{email}}'] = contactData.email || '';
+      replacements['{{domain}}'] = (contactData.email && contactData.email.includes('@')) 
+        ? contactData.email.split('@')[1] 
+        : (contactData.domain || '');
+    }
+    
+    // If no contactData, try to use previewData.lead if available
+    if (Object.keys(replacements).length === 0 && previewData?.lead) {
+      const lead = previewData.lead;
+      replacements['{{firstName}}'] = lead.firstName || '';
+      replacements['{{lastName}}'] = lead.lastName || '';
+      replacements['{{company}}'] = lead.companyName || '';
+      replacements['{{position}}'] = lead.jobTitle || '';
+      replacements['{{email}}'] = lead.email || '';
+    }
     
     let result = text;
     // Replace each variable (escape braces for regex)
-    Object.entries(replacements).forEach(([variable, value]) => {
+    // Sort by length (longest first) to avoid partial matches
+    const sortedVars = Object.keys(replacements).sort((a, b) => b.length - a.length);
+    sortedVars.forEach((variable) => {
+      const value = replacements[variable];
       // Escape braces: {{variable}} -> \{\{variable\}\}
       const escaped = variable.replace(/[{}]/g, '\\$&');
-      const regex = new RegExp(escaped, 'g');
+      const regex = new RegExp(escaped, 'gi'); // Case-insensitive
       result = result.replace(regex, value);
     });
     
     return result;
   };
 
-  // Preview with spintax expansion and variable replacement
+  // Load preview from backend when preview is shown
+  useEffect(() => {
+    if (showPreview && campaignId && (emailSubject || emailContent)) {
+      loadPreviewFromBackend();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showPreview, campaignId]);
+  
+  const loadPreviewFromBackend = async (spintaxSeed = null) => {
+    if (!campaignId) return;
+    
+    try {
+      setPreviewLoading(true);
+      // Generate a new seed for spintax rotation if not provided
+      // Each preview refresh will show different spintax selections
+      const seed = spintaxSeed !== null ? spintaxSeed : Date.now() + Math.random() * 1000000;
+      
+      const result = await campaignApi.previewEmail(
+        campaignId,
+        emailSubject || '',
+        emailContent || '',
+        null, // leadId - use random lead
+        seed  // spintax seed for rotation
+      );
+      setPreviewData(result);
+      // Also update contactData from the lead info returned
+      if (result.lead) {
+        setContactData({
+          firstName: result.lead.firstName,
+          lastName: result.lead.lastName,
+          companyName: result.lead.companyName,
+          email: result.lead.email,
+          jobTitle: result.lead.jobTitle,
+          ...result.lead // Include any other CSV columns
+        });
+      }
+      console.log('✅ Preview loaded from backend with spintax seed:', seed, result);
+    } catch (error) {
+      console.error('❌ Failed to load preview:', error);
+      // Fallback to local preview if backend fails
+      setPreviewData(null);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  // Preview with spintax expansion and variable replacement (fallback/local)
   const getPreviewContent = () => {
+    // Use backend preview if available
+    if (previewData?.body) {
+      return previewData.body;
+    }
+    
     let preview = emailContent || '';
     // First expand spintax
     preview = expandSpintax(preview);
@@ -426,6 +832,11 @@ Best regards,<br>
   };
 
   const getPreviewSubject = () => {
+    // Use backend preview if available
+    if (previewData?.subject) {
+      return previewData.subject;
+    }
+    
     let preview = emailSubject || '';
     // First expand spintax
     preview = expandSpintax(preview);
@@ -434,9 +845,44 @@ Best regards,<br>
     return preview;
   };
 
-  // Refresh preview with new spintax selection
+  // Refresh preview with new spintax selection (reload from backend)
+  // Each refresh generates a new random seed, showing different spintax rotations
   const refreshPreview = () => {
+    // Generate a new random seed for spintax rotation
+    const newSeed = Date.now() + Math.random() * 1000000;
     setPreviewKey(prev => prev + 1);
+    if (showPreview && campaignId) {
+      loadPreviewFromBackend(newSeed);
+    }
+  };
+
+  // Save email to campaign
+  const handleSaveEmail = async () => {
+    if (!campaignId) {
+      setSaveMessage({ type: 'error', text: 'No campaign ID found. Please create a campaign first.' });
+      setTimeout(() => setSaveMessage(null), 3000);
+      return;
+    }
+    
+    // Save editor content before saving
+    if (editorRef.current) {
+      const currentContent = editorRef.current.innerHTML;
+      setEmailContent(currentContent);
+    }
+    
+    setIsSaving(true);
+    setSaveMessage(null);
+    
+    try {
+      await campaignApi.saveCampaignEmail(campaignId, emailSubject, emailContent);
+      setSaveMessage({ type: 'success', text: 'Email saved successfully!' });
+      setTimeout(() => setSaveMessage(null), 3000);
+    } catch (error) {
+      setSaveMessage({ type: 'error', text: error.message || 'Failed to save email' });
+      setTimeout(() => setSaveMessage(null), 5000);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const colors = [
@@ -479,9 +925,20 @@ Best regards,<br>
             <input
               type="text"
               value={emailSubject}
-              onChange={(e) =>
-                setEmailSubject(e.target.value)
-              }
+              onChange={(e) => {
+                setEmailSubject(e.target.value);
+                const cursor = e.target.selectionStart || e.target.value.length;
+                checkAutocomplete(e.target.value, cursor, e.target, 'subject');
+              }}
+              onKeyDown={(e) => handleAutocompleteKeyDown(e, true)}
+              onSelect={(e) => {
+                const cursor = e.target.selectionStart || e.target.value.length;
+                checkAutocomplete(e.target.value, cursor, e.target, 'subject');
+              }}
+              onFocus={(e) => {
+                const cursor = e.target.selectionStart || e.target.value.length;
+                checkAutocomplete(e.target.value, cursor, e.target, 'subject');
+              }}
               placeholder="Enter email subject..."
               className="w-full bg-transparent border border-gray-300/50 backdrop-blur-sm bg-white/30 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-400/50 px-3 py-2 rounded-lg shadow-sm transition-all"
             />
@@ -493,6 +950,41 @@ Best regards,<br>
             <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400">
               {subjectStats}/50
             </div>
+            
+            {/* Autocomplete Dropdown for Subject */}
+            {showAutocomplete && autocompleteField === 'subject' && (
+              <div
+                ref={autocompleteRef}
+                className="absolute z-50 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto min-w-[200px]"
+                style={{
+                  top: `${autocompletePosition.top}px`,
+                  left: `${autocompletePosition.left}px`,
+                }}
+              >
+                {autocompleteSuggestions.map((suggestion, index) => {
+                  const variable = AVAILABLE_VARIABLES.find(v => 
+                    v.key === suggestion || v.label === suggestion
+                  ) || { key: suggestion, label: suggestion, icon: FileText };
+                  const Icon = variable.icon || FileText;
+                  
+                  return (
+                    <div
+                      key={suggestion}
+                      onClick={() => applySuggestion(suggestion, true)}
+                      className={`px-3 py-2 cursor-pointer flex items-center gap-2 hover:bg-blue-50 ${
+                        index === selectedSuggestionIndex ? 'bg-blue-100' : ''
+                      }`}
+                    >
+                      <Icon size={16} className="text-gray-500" />
+                      <span className="text-sm text-gray-700">{suggestion}</span>
+                      {variable.label !== suggestion && (
+                        <span className="text-xs text-gray-400 ml-auto">{variable.label}</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -557,6 +1049,25 @@ Best regards,<br>
           )}
             <button
               type="button"
+              onClick={handleSaveEmail}
+              disabled={isSaving || !campaignId}
+              className="px-3 py-1.5 text-xs rounded transition-colors flex items-center gap-1 bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              title={!campaignId ? 'Create a campaign first to save' : 'Save email template'}
+            >
+              {isSaving ? (
+                <>
+                  <Loader className="w-3 h-3 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <CheckCircle size={14} />
+                  Save
+                </>
+              )}
+            </button>
+            <button
+              type="button"
               onClick={() => {
                 // Save editor content before switching to preview
                 if (editorRef.current && !showPreview) {
@@ -576,6 +1087,17 @@ Best regards,<br>
             </button>
           </div>
         </div>
+        
+        {/* Save Message */}
+        {saveMessage && (
+          <div className={`mb-3 px-4 py-2 rounded-lg text-sm ${
+            saveMessage.type === 'success' 
+              ? 'bg-green-100 text-green-800 border border-green-200' 
+              : 'bg-red-100 text-red-800 border border-red-200'
+          }`}>
+            {saveMessage.text}
+          </div>
+        )}
 
         {!showPreview ? (
           <>
@@ -823,9 +1345,12 @@ Best regards,<br>
                   ref={editorRef}
                   contentEditable
                   onInput={handleEditorChange}
+                  onKeyDown={(e) => handleAutocompleteKeyDown(e, false)}
                   onBlur={() => {
                     setIsEditorFocused(false);
                     handleEditorChange();
+                    // Delay hiding autocomplete to allow clicking on it
+                    setTimeout(() => setShowAutocomplete(false), 200);
                   }}
                   onFocus={() => setIsEditorFocused(true)}
                   className={`min-h-[350px] p-4 text-sm text-gray-700 focus:outline-none ${
@@ -837,6 +1362,41 @@ Best regards,<br>
 Use the Variables button to insert personalization variables like {{firstName}}, {{company}}, etc."
                 />
                 
+                {/* Autocomplete Dropdown for Editor */}
+                {showAutocomplete && autocompleteField === 'body' && (
+                  <div
+                    ref={autocompleteRef}
+                    className="absolute z-50 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto min-w-[200px]"
+                    style={{
+                      top: `${autocompletePosition.top}px`,
+                      left: `${autocompletePosition.left}px`,
+                      position: 'absolute'
+                    }}
+                  >
+                    {autocompleteSuggestions.map((suggestion, index) => {
+                      const variable = AVAILABLE_VARIABLES.find(v => 
+                        v.key === suggestion || v.label === suggestion
+                      ) || { key: suggestion, label: suggestion, icon: FileText };
+                      const Icon = variable.icon || FileText;
+                      
+                      return (
+                        <div
+                          key={suggestion}
+                          onClick={() => applySuggestion(suggestion, false)}
+                          className={`px-3 py-2 cursor-pointer flex items-center gap-2 hover:bg-blue-50 ${
+                            index === selectedSuggestionIndex ? 'bg-blue-100' : ''
+                          }`}
+                        >
+                          <Icon size={16} className="text-gray-500" />
+                          <span className="text-sm text-gray-700">{suggestion}</span>
+                          {variable.label !== suggestion && (
+                            <span className="text-xs text-gray-400 ml-auto">{variable.label}</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           </>
@@ -1068,28 +1628,51 @@ Use the Variables button to insert personalization variables like {{firstName}},
                 <div className="w-full max-w-4xl bg-white rounded-lg shadow-lg overflow-hidden border border-gray-200 mt-6">
                   <div className="bg-gray-50 border-b border-gray-200 px-6 py-4">
                     <div className="flex items-center justify-between">
-                      <h3 className="text-lg font-semibold text-gray-900">Email Preview</h3>
-                      <button
-                        type="button"
-                        onClick={refreshPreview}
-                        className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center gap-2"
-                        title="Refresh with new spintax selection"
-                      >
-                        <Undo2 size={14} />
-                        Refresh Preview
-                      </button>
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900">Email Preview</h3>
+                        {previewData?.lead && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            Using sample lead: <strong>{previewData.lead.firstName} {previewData.lead.lastName}</strong> at <strong>{previewData.lead.companyName}</strong>
+                          </p>
+                        )}
+                      </div>
+                      {previewLoading ? (
+                        <div className="flex items-center gap-2 text-xs text-gray-600">
+                          <Loader size={14} className="animate-spin" />
+                          Loading...
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={refreshPreview}
+                          className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center gap-2"
+                          title="Refresh with new sample lead"
+                        >
+                          <Undo2 size={14} />
+                          Refresh Preview
+                        </button>
+                      )}
                     </div>
                   </div>
                   <div className="p-6">
-                    <div className="mb-4 pb-4 border-b border-gray-200">
-                      <div className="text-xs text-gray-500 mb-1">Subject:</div>
-                      <div className="text-base font-semibold text-gray-900">{getPreviewSubject() || '(No subject)'}</div>
-                    </div>
-                    <div className="text-xs text-gray-500 mb-2">Body:</div>
-                    <div 
-                      className="prose prose-sm max-w-none text-gray-700"
-                      dangerouslySetInnerHTML={{ __html: getPreviewContent() || '<p>No content yet</p>' }}
-                    />
+                    {previewLoading ? (
+                      <div className="flex items-center justify-center py-12">
+                        <Loader size={24} className="animate-spin text-blue-600" />
+                        <span className="ml-3 text-gray-600">Loading preview with sample lead data...</span>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="mb-4 pb-4 border-b border-gray-200">
+                          <div className="text-xs text-gray-500 mb-1">Subject:</div>
+                          <div className="text-base font-semibold text-gray-900">{getPreviewSubject() || '(No subject)'}</div>
+                        </div>
+                        <div className="text-xs text-gray-500 mb-2">Body:</div>
+                        <div 
+                          className="prose prose-sm max-w-none text-gray-700"
+                          dangerouslySetInnerHTML={{ __html: getPreviewContent() || '<p>No content yet</p>' }}
+                        />
+                      </>
+                    )}
                   </div>
                 </div>
               </div>

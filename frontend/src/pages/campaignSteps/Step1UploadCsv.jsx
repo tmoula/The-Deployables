@@ -70,19 +70,60 @@ export default function Step1UploadCsv({
         }`}
       >
         {uploadedFile ? (
-          <div className="flex flex-col items-center">
+          <div className="flex flex-col items-center w-full">
             <CheckCircle
               size={48}
               className="text-green-600 mb-4"
             />
-            <p className="text-lg font-medium text-gray-700 mb-2">
-              {uploadedFile.name}
-            </p>
+            <div className="text-center mb-4 w-full">
+              <p className="text-lg font-medium text-gray-700 mb-1">
+                {uploadedFile.name}
+              </p>
+              {uploadedFile.size && (
+                <p className="text-sm text-gray-500 mb-2">
+                  {(uploadedFile.size / 1024).toFixed(2)} KB
+                </p>
+              )}
+              {uploadedFile.leadsCount !== undefined && (
+                <p className="text-sm font-semibold text-blue-600 mb-2">
+                  {uploadedFile.leadsCount} leads detected
+                </p>
+              )}
+              {isEditing && (
+                <p className="text-sm text-gray-500 mb-2">
+                  CSV file already uploaded for this campaign
+                </p>
+              )}
+            </div>
+            
+            {/* Show detected columns */}
+            {uploadedFile.columns && uploadedFile.columns.length > 0 && (
+              <div className="w-full mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <p className="text-sm font-semibold text-gray-700 mb-2">
+                  📋 Detected Columns ({uploadedFile.columns.length}):
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {uploadedFile.columns.map((column, index) => (
+                    <span
+                      key={index}
+                      className="px-2 py-1 bg-white border border-blue-300 rounded text-xs text-gray-700 font-mono"
+                      title={`Use {{${column.toLowerCase().replace(/\s+/g, '_')}}} in your emails`}
+                    >
+                      {column}
+                    </span>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-600 mt-2">
+                  💡 Tip: Use these columns as variables in your emails (e.g., {`{{${uploadedFile.columns[0]?.toLowerCase().replace(/\s+/g, '_') || 'column_name'}}}`})
+                </p>
+              </div>
+            )}
+            
             <button
               onClick={() => setUploadedFile(null)}
-              className="text-sm text-blue-600 hover:text-blue-800"
+              className="text-sm text-blue-600 hover:text-blue-800 mt-4"
             >
-              Change file
+              {isEditing ? "Replace file" : "Change file"}
             </button>
           </div>
         ) : (

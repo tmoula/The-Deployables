@@ -11,3 +11,4 @@ public interface UserRepository extends JpaRepository<UserSummary, Integer> {
     Optional<UserSummary> findByEmail(String email);
 }
 
+

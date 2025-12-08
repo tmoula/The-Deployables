@@ -75,3 +75,4 @@ public class LeadBatchEntity {
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 }
 
+

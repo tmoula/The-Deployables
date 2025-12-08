@@ -35,6 +35,20 @@ public class CampaignEntity {
     @Column(name = "created_at")
     private LocalDateTime createdAt;
     
+    @Column(name = "csv_filename")
+    private String csvFilename;
+    
+    @Column(name = "csv_columns", columnDefinition = "TEXT")
+    private String csvColumns; // JSON array of column names
+    
+
+    @Column(name = "email_subject", columnDefinition = "TEXT")
+    private String emailSubject;
+
+    @Column(name = "email_body", columnDefinition = "TEXT")
+    private String emailBody;
+
+
     // Getters and setters
     public Integer getId() { return id; }
     public void setId(Integer id) { this.id = id; }
@@ -62,6 +76,19 @@ public class CampaignEntity {
     
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+    
+    public String getCsvFilename() { return csvFilename; }
+    public void setCsvFilename(String csvFilename) { this.csvFilename = csvFilename; }
+    
+    public String getCsvColumns() { return csvColumns; }
+    public void setCsvColumns(String csvColumns) { this.csvColumns = csvColumns; }
+
+    public String getEmailSubject() { return emailSubject; }
+    public void setEmailSubject(String emailSubject) { this.emailSubject = emailSubject; }
+
+    public String getEmailBody() { return emailBody; }
+    public void setEmailBody(String emailBody) { this.emailBody = emailBody; }
+
 }
 
 

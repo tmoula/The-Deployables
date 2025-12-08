@@ -106,9 +106,9 @@ public class ProspectService {
                 // This is kept for backward compatibility but should not be called
                 if (useRabbitMQ) {
                     System.out.println("=== WARNING: searchProspects is deprecated. Use MatchService.startLeadGeneration instead ===");
-                    System.out.println("=== Using RabbitMQ to generate matching companies (without batch_id) ===");
-                    // Pass null for batchId since this is the old flow
-                    companyDomains = rabbitMQClient.generateMatchingCompanies(criteria, requestedCompanies, null);
+                    System.out.println("=== RabbitMQ async mode not supported in deprecated method. Falling back to HTTP ===");
+                    // RabbitMQ is now async-only, so fall back to HTTP for this deprecated synchronous method
+                    companyDomains = aiServiceClient.generateMatchingCompanies(criteria, requestedCompanies);
                 } else {
                     System.out.println("=== Using HTTP to generate matching companies ===");
                     companyDomains = aiServiceClient.generateMatchingCompanies(criteria, requestedCompanies);

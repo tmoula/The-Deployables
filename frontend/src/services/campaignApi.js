@@ -115,6 +115,43 @@ export const campaignApi = {
     return response.json();
   },
 
+  // Get merge fields (CSV columns) for a campaign
+  async getMergeFields(campaignId) {
+    const response = await fetch(`${CAMPAIGN_API_URL}/campaigns/${campaignId}/merge-fields`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch merge fields: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  // Preview email with sample lead data
+  async previewEmail(campaignId, subject, body, leadId = null, spintaxSeed = null) {
+    const url = new URL(`${CAMPAIGN_API_URL}/campaigns/${campaignId}/preview-email`);
+    if (leadId) {
+      url.searchParams.append('leadId', leadId);
+    }
+    // Pass spintax seed for rotation - each preview refresh gets different spintax selections
+    if (spintaxSeed !== null) {
+      url.searchParams.append('spintaxSeed', spintaxSeed.toString());
+    }
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getUserEmailHeaders()
+      },
+      body: JSON.stringify({ subject, body })
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || `Failed to preview email: ${response.statusText}`);
+    }
+    
+    return response.json();
+  },
+
   // Delete a campaign
   async deleteCampaign(campaignId) {
     const headers = getUserEmailHeaders();
@@ -134,6 +171,33 @@ export const campaignApi = {
     }
     
     console.log('🗑️ Campaign deleted successfully');
+  },
+
+  // Save campaign email (subject and body)
+  async saveCampaignEmail(campaignId, emailSubject, emailBody) {
+    const headers = getUserEmailHeaders({
+      'Content-Type': 'application/json'
+    });
+    
+    console.log('💾 Saving email for campaign:', campaignId);
+    
+    const response = await fetch(`${CAMPAIGN_API_URL}/campaigns/${campaignId}/email`, {
+      method: 'PUT',
+      headers: headers,
+      body: JSON.stringify({ emailSubject, emailBody })
+    });
+    
+    console.log('💾 Save email response status:', response.status);
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: response.statusText }));
+      console.error('💾 Save email error:', error);
+      throw new Error(error.error || `Failed to save email: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log('💾 Email saved successfully:', data);
+    return data;
   }
 };
 

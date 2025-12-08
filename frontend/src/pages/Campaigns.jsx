@@ -196,6 +196,16 @@ export default function Campaigns() {
       
       const campaign = result.campaign || result;
       const leadsCount = result.leadsCount || campaign.totalLeads || 0;
+      const columns = result.columns || [];
+      const fileName = result.fileName || uploadedFile?.name || 'Unknown';
+      const fileSize = result.fileSize || uploadedFile?.size || 0;
+      
+      // Store CSV columns for use in email composer
+      if (columns && columns.length > 0) {
+        // Store columns in a way that can be accessed by email composer
+        // You can add this to campaign state or a separate state
+        console.log('📋 CSV Columns detected:', columns);
+      }
       
       // Load contacts after import (leads are now in database)
       if (campaign.id) {
@@ -212,8 +222,18 @@ export default function Campaigns() {
         setSelectedCampaign(campaign);
       }
       
+      // Update uploadedFile with additional info
+      const fileWithInfo = {
+        ...uploadedFile,
+        name: fileName,
+        size: fileSize,
+        leadsCount: leadsCount,
+        columns: columns
+      };
+      setUploadedFile(fileWithInfo);
+      
       alert(
-        `Successfully uploaded ${leadsCount} leads! Campaign created: ${
+        `Successfully uploaded ${leadsCount} leads from ${fileName}! Campaign created: ${
           campaign.name || "Campaign"
         }. ${result.importedLeads ? result.importedLeads.length + ' contacts imported to database.' : ''}`
       );
@@ -552,6 +572,7 @@ export default function Campaigns() {
                   campaignName={campaignName}
                   campaignId={editingCampaignId ? parseInt(editingCampaignId) : (selectedCampaign ? (parseInt(selectedCampaign.id) || 1) : 1)}
                   contactId={selectedContactId || (campaignContacts && campaignContacts.length > 0 ? campaignContacts[0].contactId : 1)}
+                  csvColumns={uploadedFile?.columns || []}
                 />
                 {/* Navigation Buttons for Step 2 */}
                 <div className="flex justify-between items-center pt-6 mt-6 border-t border-gray-200">
@@ -1172,25 +1193,55 @@ export default function Campaigns() {
                       {/* Dropdown Menu */}
                       {openMenuId === campaign.id && (
                         <div className="absolute right-0 top-8 z-50 w-48 bg-white border border-gray-200 rounded-lg shadow-lg">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingCampaignId(campaign.id);
-                              setOpenMenuId(null);
-                              // Load campaign data into form fields
-                              setCampaignName(campaign.name || "");
-                              setDescription(campaign.description || "");
-                              // Load campaign settings if available
-                              if (campaign.settings) {
-                                setCampaignSettings(campaign.settings);
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          setEditingCampaignId(campaign.id);
+                          setOpenMenuId(null);
+                          // Load campaign data into form fields
+                          setCampaignName(campaign.name || "");
+                          setDescription(campaign.description || "");
+                          // Load full campaign data to get CSV filename and columns
+                          try {
+                            const fullCampaign = await campaignApi.getCampaign(campaign.id);
+                            if (fullCampaign.csvFilename || fullCampaign.csvColumns) {
+                              // Create a fake file object to show the uploaded CSV
+                              const fakeFile = {
+                                name: fullCampaign.csvFilename || `campaign_${campaign.id}_leads.csv`,
+                                size: 0,
+                                type: 'text/csv',
+                                leadsCount: fullCampaign.totalLeads || 0,
+                                columns: fullCampaign.csvColumns || []
+                              };
+                              setUploadedFile(fakeFile);
+                            }
+                            // Also check if campaign has leads (fallback)
+                            if (!fullCampaign.csvFilename && !fullCampaign.csvColumns) {
+                              const leads = await campaignApi.getCampaignLeads(campaign.id);
+                              if (leads && leads.length > 0) {
+                                const fakeFile = {
+                                  name: `leads_${leads.length}_imported.csv`,
+                                  size: 0,
+                                  type: 'text/csv',
+                                  leadsCount: leads.length
+                                };
+                                setUploadedFile(fakeFile);
                               }
-                              // Load email content/subject if available
-                              if (campaign.emailSubject) {
-                                setEmailSubject(campaign.emailSubject);
-                              }
-                              if (campaign.emailContent) {
-                                setEmailContent(campaign.emailContent);
-                              }
+                            }
+                          } catch (error) {
+                            console.error("Failed to load campaign details:", error);
+                          }
+                          // Load campaign settings if available
+                          if (campaign.settings) {
+                            setCampaignSettings(campaign.settings);
+                          }
+                          // Load email content/subject if available
+                          if (campaign.emailSubject) {
+                            setEmailSubject(campaign.emailSubject);
+                          }
+                          if (campaign.emailBody) {
+                            setEmailContent(campaign.emailBody);
+                          }
                               // Start from Step 1
                               setCurrentStep(1);
                               setShowCreateCampaign(false);

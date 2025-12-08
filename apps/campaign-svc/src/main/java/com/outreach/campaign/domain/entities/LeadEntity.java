@@ -47,6 +47,9 @@ public class LeadEntity {
     @Column(name = "custom_notes", columnDefinition = "TEXT")
     private String customNotes;
     
+    @Column(name = "csv_data", columnDefinition = "TEXT")
+    private String csvData; // JSON string containing all CSV row data (stored as TEXT for compatibility)
+    
     @Column(name = "created_at")
     private LocalDateTime createdAt;
     
@@ -89,6 +92,9 @@ public class LeadEntity {
     
     public String getCustomNotes() { return customNotes; }
     public void setCustomNotes(String customNotes) { this.customNotes = customNotes; }
+    
+    public String getCsvData() { return csvData; }
+    public void setCsvData(String csvData) { this.csvData = csvData; }
     
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

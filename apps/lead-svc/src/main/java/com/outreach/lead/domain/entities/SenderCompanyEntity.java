@@ -63,3 +63,4 @@ public class SenderCompanyEntity {
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 }
 
+

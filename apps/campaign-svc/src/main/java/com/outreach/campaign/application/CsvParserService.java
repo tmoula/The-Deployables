@@ -8,27 +8,46 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class CsvParserService {
     
-    public List<Lead> parseCsv(MultipartFile file) {
+    /**
+     * Parse CSV file and extract:
+     * 1. All column headers (for variables)
+     * 2. All row data as Map (for storage and variable replacement)
+     * 3. Lead objects (for backward compatibility)
+     */
+    public CsvParseResult parseCsv(MultipartFile file) {
         List<Lead> leads = new ArrayList<>();
+        List<String> columns = new ArrayList<>();
+        List<Map<String, String>> rawRowData = new ArrayList<>();
         
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
             
-            // Read header line
+            // Step 1: Read header line - Extract ALL column names
             String headerLine = reader.readLine();
             if (headerLine == null) {
                 throw new IllegalArgumentException("CSV file is empty");
             }
             
             String[] headers = parseCsvLine(headerLine);
+            // Store ALL column headers (trimmed and cleaned) - these become {{variables}}
+            columns = Arrays.stream(headers)
+                    .map(String::trim)
+                    .filter(h -> !h.isEmpty())
+                    .collect(Collectors.toList());
             
-            // Find column indices
+            System.out.println("CSV PARSER - Extracted " + columns.size() + " columns: " + columns);
+            
+            // Find column indices for standard fields (for Lead object creation)
             int matchScoreIdx = findColumnIndex(headers, "Match Score");
             int companyIdx = findColumnIndex(headers, "Company");
             int firstNameIdx = findColumnIndex(headers, "First Name");
@@ -44,15 +63,60 @@ public class CsvParserService {
             int notesIdx = findColumnIndex(headers, "Notes");
             int personalizationHookIdx = findColumnIndex(headers, "Personalization Hook");
             
-            // Read data rows
+            // Step 2: Read data rows - Store ALL data as Map
+            // IMPORTANT: Only count rows that have a valid email address
             String line;
             int rowNumber = 1;
+            int skippedRows = 0;
             while ((line = reader.readLine()) != null) {
                 rowNumber++;
                 if (line.trim().isEmpty()) continue;
                 
                 try {
                     String[] values = parseCsvLine(line);
+                    
+                    // Step 3: Create Map with ALL CSV data (column name -> value)
+                    // This is the key part - store everything, not just specific fields
+                    Map<String, String> rowData = new LinkedHashMap<>();
+                    for (int i = 0; i < headers.length && i < values.length; i++) {
+                        String columnName = headers[i].trim();
+                        String value = (i < values.length && values[i] != null) ? values[i].trim() : "";
+                        rowData.put(columnName, value);
+                    }
+                    
+                    // Extract email from row data - check multiple possible column names
+                    String email = null;
+                    // First, try the standard "Email" column index
+                    if (emailIdx >= 0 && emailIdx < values.length) {
+                        email = getValue(values, emailIdx);
+                    }
+                    // Also check rowData for email (case-insensitive) - handles variations like "email", "Email", "E-mail", etc.
+                    if (email == null || email.trim().isEmpty()) {
+                        for (Map.Entry<String, String> entry : rowData.entrySet()) {
+                            String key = entry.getKey().trim();
+                            if (key.equalsIgnoreCase("email") || 
+                                key.equalsIgnoreCase("e-mail") ||
+                                key.equalsIgnoreCase("email address") ||
+                                key.equalsIgnoreCase("e-mail address") ||
+                                key.toLowerCase().contains("email")) {
+                                String value = entry.getValue();
+                                if (value != null && !value.trim().isEmpty()) {
+                                    email = value;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Only process rows that have a valid email address
+                    if (email == null || email.trim().isEmpty() || !isValidEmail(email.trim())) {
+                        skippedRows++;
+                        System.out.println("Skipping row " + rowNumber + " - no valid email found");
+                        continue;
+                    }
+                    
+                    // Row has valid email - add to results
+                    rawRowData.add(rowData);
                     
                     // Parse match score
                     Double matchScore = null;
@@ -76,6 +140,7 @@ public class CsvParserService {
                         }
                     }
                     
+                    // Create Lead object (for backward compatibility)
                     Lead lead = new Lead(
                         UUID.randomUUID().toString(),
                         matchScore,
@@ -83,7 +148,7 @@ public class CsvParserService {
                         getValue(values, firstNameIdx),
                         getValue(values, lastNameIdx),
                         getValue(values, positionIdx),
-                        getValue(values, emailIdx),
+                        email.trim(), // Use the validated email
                         getValue(values, domainIdx),
                         getValue(values, industryIdx),
                         companySize,
@@ -97,14 +162,36 @@ public class CsvParserService {
                     leads.add(lead);
                 } catch (Exception e) {
                     System.err.println("Error parsing row " + rowNumber + ": " + e.getMessage());
+                    skippedRows++;
                     // Continue processing other rows
                 }
             }
+            
+            System.out.println("CSV PARSER - Parsed " + leads.size() + " leads with valid emails (skipped " + skippedRows + " rows without emails)");
+            
+            System.out.println("CSV PARSER - Final count: " + leads.size() + " leads with valid emails, " + columns.size() + " columns detected");
         } catch (Exception e) {
             throw new RuntimeException("Failed to parse CSV file: " + e.getMessage(), e);
         }
         
-        return leads;
+        return new CsvParseResult(leads, columns, rawRowData);
+    }
+    
+    /**
+     * Simple email validation - checks for basic email format
+     */
+    private boolean isValidEmail(String email) {
+        if (email == null || email.trim().isEmpty()) {
+            return false;
+        }
+        // Basic email validation: must contain @ and at least one dot after @
+        String trimmed = email.trim().toLowerCase();
+        int atIndex = trimmed.indexOf('@');
+        if (atIndex <= 0 || atIndex >= trimmed.length() - 1) {
+            return false;
+        }
+        String domain = trimmed.substring(atIndex + 1);
+        return domain.contains(".") && domain.length() > 3; // e.g., "a.co" is minimum
     }
     
     private String[] parseCsvLine(String line) {
