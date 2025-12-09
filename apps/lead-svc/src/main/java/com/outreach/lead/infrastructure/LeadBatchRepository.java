@@ -14,3 +14,5 @@ public interface LeadBatchRepository extends JpaRepository<LeadBatchEntity, Inte
 }
 
 
+
+

@@ -104,6 +104,35 @@ public class CampaignLeadService {
         }
         return lead;
     }
+
+    /**
+     * Get a random lead for this campaign that has csv_data populated.
+     * Useful for preview when you want a different lead each time.
+     * @param campaignId The campaign ID
+     * @return Random LeadEntity with CSV data, or null if none found
+     */
+    public LeadEntity getLeadWithCsvData(Integer campaignId) {
+        List<CampaignLeadEntity> campaignLeads = campaignLeadRepository.findByCampaignId(campaignId);
+        List<LeadEntity> leadsWithCsvData = new ArrayList<>();
+        
+        for (CampaignLeadEntity campaignLead : campaignLeads) {
+            LeadEntity lead = leadRepository.findById(campaignLead.getLeadId()).orElse(null);
+            if (lead != null && lead.getCsvData() != null && !lead.getCsvData().trim().isEmpty()) {
+                leadsWithCsvData.add(lead);
+            }
+        }
+        
+        if (leadsWithCsvData.isEmpty()) {
+            System.out.println("getLeadWithCsvData - No leads with CSV data found for campaign " + campaignId);
+            return null;
+        }
+        
+        // Return a random lead with CSV data (different each time)
+        int randomIndex = (int) (Math.random() * leadsWithCsvData.size());
+        LeadEntity selectedLead = leadsWithCsvData.get(randomIndex);
+        System.out.println("getLeadWithCsvData - Selected random lead with CSV data: " + selectedLead.getId() + " (out of " + leadsWithCsvData.size() + " leads)");
+        return selectedLead;
+    }
     
     /**
      * Get all leads for a campaign

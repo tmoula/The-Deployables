@@ -241,3 +241,5 @@ CREATE INDEX idx_email_events_at ON email_events(event_at);
 -- 11. email_events
 
 
+
+

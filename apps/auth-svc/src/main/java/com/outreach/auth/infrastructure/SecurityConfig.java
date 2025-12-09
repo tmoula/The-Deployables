@@ -34,6 +34,8 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/verify", "/api/v1/auth/health", "/api/v1/auth/validate").permitAll()
+                .requestMatchers("/api/v1/auth/mailboxes/**").permitAll() // Allow all mailbox endpoints with X-User-Id header
+                .requestMatchers("/api/v1/auth/inbox/**").permitAll() // Allow all inbox endpoints with X-User-Id header
                 .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/actuator/**").permitAll()
                 .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
                 .anyRequest().authenticated()

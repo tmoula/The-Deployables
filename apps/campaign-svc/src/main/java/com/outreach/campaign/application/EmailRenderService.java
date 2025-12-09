@@ -5,8 +5,10 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.regex.Matcher;
@@ -36,8 +38,15 @@ public class EmailRenderService {
             return "";
         }
         
+        if (lead == null) {
+            System.err.println("RENDER EMAIL - ERROR: Lead is null!");
+            return template; // Return template as-is if no lead data
+        }
+        
         System.out.println("RENDER EMAIL - Template: " + template.substring(0, Math.min(100, template.length())));
         System.out.println("RENDER EMAIL - Spintax seed: " + spintaxSeed);
+        System.out.println("RENDER EMAIL - Lead ID: " + lead.getId());
+        System.out.println("RENDER EMAIL - Lead has CSV data: " + (lead.getCsvData() != null && !lead.getCsvData().trim().isEmpty()));
         
         // Step 1: Expand spintax patterns {option1|option2|option3}
         // IMPORTANT: Preserve {{variable}} patterns (double braces) - only expand single brace spintax
@@ -71,111 +80,114 @@ public class EmailRenderService {
             System.out.println("RENDER EMAIL - Found variable in template: '{{" + variable + "}}'");
             String replacement = "";
             
-            // Try multiple matching strategies
-            // 1. Try with braces first: {{variable}}
-            String keyWithBraces = "{{" + variable + "}}";
-            if (replacements.containsKey(keyWithBraces)) {
-                replacement = replacements.get(keyWithBraces);
-                System.out.println("RENDER EMAIL - Found replacement via keyWithBraces: '" + keyWithBraces + "' = '" + replacement + "'");
-            }
-            // 2. Try without braces: variable
-            else if (replacements.containsKey(variable)) {
-                replacement = replacements.get(variable);
-                System.out.println("RENDER EMAIL - Found replacement via variable key: '" + variable + "' = '" + replacement + "'");
-            }
-            // 3. Case-insensitive match (with braces)
-            else {
-                for (Map.Entry<String, String> entry : replacements.entrySet()) {
-                    String key = entry.getKey();
-                    // Remove {{ and }} from key for comparison
-                    String keyVar = key.replaceAll("\\{\\{|\\}\\}", "");
-                    if (keyVar.equalsIgnoreCase(variable)) {
-                        replacement = entry.getValue();
-                        break;
-                    }
-                }
-            }
-            // 4. Normalized match (spaces -> underscores, lowercase)
-            if (replacement.isEmpty()) {
-                String normalized = normalizeVariableName(variable);
-                // Try normalized with braces
-                if (replacements.containsKey("{{" + normalized + "}}")) {
-                    replacement = replacements.get("{{" + normalized + "}}");
-                }
-                // Try normalized without braces
-                else if (replacements.containsKey(normalized)) {
-                    replacement = replacements.get(normalized);
-                }
-                // Try without underscores
-                else {
-                    String noUnderscore = normalized.replace("_", "");
-                    if (replacements.containsKey("{{" + noUnderscore + "}}")) {
-                        replacement = replacements.get("{{" + noUnderscore + "}}");
-                    } else if (replacements.containsKey(noUnderscore)) {
-                        replacement = replacements.get(noUnderscore);
-                    }
-                }
-            }
-            // 5. Try underscore version if variable has spaces (e.g., "First Name" -> "First_Name")
-            if (replacement.isEmpty() && variable.contains(" ")) {
-                String withUnderscore = variable.replace(" ", "_");
-                if (replacements.containsKey("{{" + withUnderscore + "}}")) {
-                    replacement = replacements.get("{{" + withUnderscore + "}}");
-                } else if (replacements.containsKey(withUnderscore)) {
-                    replacement = replacements.get(withUnderscore);
-                }
-            }
-            // 6. Try space version if variable has underscores (e.g., "First_Name" -> "First Name")
-            if (replacement.isEmpty() && variable.contains("_")) {
+            // Generate ALL possible variations of the variable to try
+            List<String> variationsToTry = new ArrayList<>();
+            
+            // 1. Original variable (exact)
+            variationsToTry.add(variable);
+            variationsToTry.add("{{" + variable + "}}");
+            
+            // 2. Normalized (lowercase, spaces -> underscores)
+            String normalized = normalizeVariableName(variable);
+            variationsToTry.add(normalized);
+            variationsToTry.add("{{" + normalized + "}}");
+            
+            // 3. Space <-> Underscore conversions
+            if (variable.contains("_")) {
                 String withSpace = variable.replace("_", " ");
-                System.out.println("RENDER EMAIL - Trying space version: '" + withSpace + "'");
-                if (replacements.containsKey("{{" + withSpace + "}}")) {
-                    replacement = replacements.get("{{" + withSpace + "}}");
-                    System.out.println("RENDER EMAIL - Found replacement via space version with braces: '" + replacement + "'");
-                } else if (replacements.containsKey(withSpace)) {
-                    replacement = replacements.get(withSpace);
-                    System.out.println("RENDER EMAIL - Found replacement via space version: '" + replacement + "'");
-                }
-                // Also try case-insensitive
-                if (replacement.isEmpty()) {
-                    for (Map.Entry<String, String> entry : replacements.entrySet()) {
-                        String key = entry.getKey();
-                        String keyVar = key.replaceAll("\\{\\{|\\}\\}", "");
-                        if (keyVar.equalsIgnoreCase(withSpace)) {
-                            replacement = entry.getValue();
-                            System.out.println("RENDER EMAIL - Found replacement via case-insensitive space match: '" + key + "' = '" + replacement + "'");
-                            break;
-                        }
-                    }
-                }
+                variationsToTry.add(withSpace);
+                variationsToTry.add("{{" + withSpace + "}}");
+                // Case variations
+                variationsToTry.add(withSpace.toLowerCase());
+                variationsToTry.add("{{" + withSpace.toLowerCase() + "}}");
+                variationsToTry.add(capitalizeWords(withSpace));
+                variationsToTry.add("{{" + capitalizeWords(withSpace) + "}}");
             }
-            // 7. Try camelCase version if variable has underscores (e.g., "Company_Name" -> "companyName")
-            if (replacement.isEmpty() && variable.contains("_")) {
+            if (variable.contains(" ")) {
+                String withUnderscore = variable.replace(" ", "_");
+                variationsToTry.add(withUnderscore);
+                variationsToTry.add("{{" + withUnderscore + "}}");
+                // Case variations
+                variationsToTry.add(withUnderscore.toLowerCase());
+                variationsToTry.add("{{" + withUnderscore.toLowerCase() + "}}");
+                variationsToTry.add(withUnderscore.toUpperCase());
+                variationsToTry.add("{{" + withUnderscore.toUpperCase() + "}}");
+            }
+            
+            // 4. CamelCase conversions
+            if (variable.contains("_")) {
                 String[] parts = variable.split("_");
                 if (parts.length > 1) {
-                    // Convert to camelCase: "Company_Name" -> "companyName"
+                    // camelCase: "first_name" -> "firstName"
                     String camelCase = parts[0].toLowerCase() + 
                         Arrays.stream(parts).skip(1)
                             .map(part -> part.substring(0, 1).toUpperCase() + part.substring(1).toLowerCase())
                             .collect(java.util.stream.Collectors.joining());
-                    if (replacements.containsKey("{{" + camelCase + "}}")) {
-                        replacement = replacements.get("{{" + camelCase + "}}");
-                    } else if (replacements.containsKey(camelCase)) {
-                        replacement = replacements.get(camelCase);
+                    variationsToTry.add(camelCase);
+                    variationsToTry.add("{{" + camelCase + "}}");
+                    // PascalCase: "First_Name" -> "FirstName"
+                    String pascalCase = Arrays.stream(parts)
+                        .map(part -> part.substring(0, 1).toUpperCase() + part.substring(1).toLowerCase())
+                        .collect(java.util.stream.Collectors.joining());
+                    variationsToTry.add(pascalCase);
+                    variationsToTry.add("{{" + pascalCase + "}}");
+                }
+            }
+            
+            // 5. Case variations of original
+            variationsToTry.add(variable.toLowerCase());
+            variationsToTry.add("{{" + variable.toLowerCase() + "}}");
+            variationsToTry.add(variable.toUpperCase());
+            variationsToTry.add("{{" + variable.toUpperCase() + "}}");
+            if (variable.length() > 0) {
+                String capitalized = variable.substring(0, 1).toUpperCase() + variable.substring(1).toLowerCase();
+                variationsToTry.add(capitalized);
+                variationsToTry.add("{{" + capitalized + "}}");
+            }
+            
+            // Remove duplicates
+            variationsToTry = variationsToTry.stream().distinct().collect(java.util.stream.Collectors.toList());
+            
+            System.out.println("RENDER EMAIL - Trying " + variationsToTry.size() + " variations for '{{" + variable + "}}'");
+            
+            // Try each variation
+            for (String variation : variationsToTry) {
+                if (replacements.containsKey(variation)) {
+                    replacement = replacements.get(variation);
+                    System.out.println("RENDER EMAIL - SUCCESS: Found match for '{{" + variable + "}}' using variation '" + variation + "' = '" + replacement + "'");
+                    break;
+                }
+            }
+            
+            // 6. Last resort: Case-insensitive search through all keys
+            if (replacement.isEmpty()) {
+                String variableLower = variable.toLowerCase().replaceAll("[^a-z0-9]", "");
+                for (Map.Entry<String, String> entry : replacements.entrySet()) {
+                    String key = entry.getKey().replaceAll("\\{\\{|\\}\\}", "").toLowerCase().replaceAll("[^a-z0-9]", "");
+                    if (key.equals(variableLower)) {
+                        replacement = entry.getValue();
+                        System.out.println("RENDER EMAIL - SUCCESS: Found case-insensitive match for '{{" + variable + "}}' using key '" + entry.getKey() + "' = '" + replacement + "'");
+                        break;
                     }
                 }
             }
             
             if (replacement.isEmpty()) {
                 System.out.println("RENDER EMAIL - WARNING: No replacement found for {{" + variable + "}}");
-                System.out.println("RENDER EMAIL - Tried keys: {{" + variable + "}}, " + variable + ", normalized variants");
-                System.out.println("RENDER EMAIL - Available keys (first 20): " + replacements.keySet().stream()
-                    .limit(20)
+                System.out.println("RENDER EMAIL - Tried " + variationsToTry.size() + " variations: " + 
+                    variationsToTry.stream().limit(10).collect(java.util.stream.Collectors.joining(", ")) + "...");
+                System.out.println("RENDER EMAIL - Available keys (first 30): " + replacements.keySet().stream()
+                    .limit(30)
                     .collect(java.util.stream.Collectors.joining(", ")));
-                System.out.println("RENDER EMAIL - Looking for keys containing 'First' or 'Company': " + 
+                System.out.println("RENDER EMAIL - Looking for keys containing 'company' (case-insensitive): " + 
                     replacements.keySet().stream()
-                        .filter(k -> k.toLowerCase().contains("first") || k.toLowerCase().contains("company"))
-                        .limit(10)
+                        .filter(k -> k.toLowerCase().contains("company"))
+                        .limit(20)
+                        .collect(java.util.stream.Collectors.joining(", ")));
+                System.out.println("RENDER EMAIL - Looking for keys containing 'first' (case-insensitive): " + 
+                    replacements.keySet().stream()
+                        .filter(k -> k.toLowerCase().contains("first"))
+                        .limit(20)
                         .collect(java.util.stream.Collectors.joining(", ")));
             } else {
                 System.out.println("RENDER EMAIL - SUCCESS: Replacing {{" + variable + "}} with: '" + replacement + "'");
@@ -274,6 +286,18 @@ public class EmailRenderService {
         return variable.toLowerCase()
             .replaceAll("\\s+", "_")
             .replaceAll("[^a-z0-9_]", "");
+    }
+    
+    /**
+     * Capitalize first letter of each word (e.g., "first name" -> "First Name")
+     */
+    private String capitalizeWords(String text) {
+        if (text == null || text.isEmpty()) return text;
+        return Arrays.stream(text.split("\\s+"))
+            .map(word -> word.length() > 0 
+                ? word.substring(0, 1).toUpperCase() + word.substring(1).toLowerCase()
+                : word)
+            .collect(java.util.stream.Collectors.joining(" "));
     }
     
     /**
@@ -397,6 +421,95 @@ public class EmailRenderService {
         
         // STEP 3: Add standard field mappings (for backward compatibility)
         // Add both with and without {{}} braces for flexible matching
+        
+        // Try to get company name from lead entity first, then from CSV data, then from email domain
+        String companyName = lead.getCompanyName();
+        if ((companyName == null || companyName.trim().isEmpty()) && csvData != null) {
+            // Try to find company name in CSV data using various keys
+            // Check for exact matches first (case-insensitive)
+            String[] companyKeys = {"Company Name", "Company", "Company_Name", "companyName", "CompanyName", 
+                                    "Company name", "company_name", "COMPANY", "Company_Name", "COMPANY_NAME",
+                                    "company", "CompanyName", "COMPANY_NAME", "Company Name", "company name"};
+            
+            // First pass: exact case-insensitive match
+            for (String key : companyKeys) {
+                for (String csvKey : csvData.keySet()) {
+                    if (csvKey.equalsIgnoreCase(key.trim())) {
+                        companyName = csvData.get(csvKey);
+                        if (companyName != null && !companyName.trim().isEmpty()) {
+                            System.out.println("BUILD REPLACEMENT MAP - Found company name in CSV data using exact match: '" + csvKey + "' = '" + companyName + "'");
+                            break;
+                        }
+                    }
+                }
+                if (companyName != null && !companyName.trim().isEmpty()) {
+                    break;
+                }
+            }
+            
+            // Second pass: partial matches (contains "company" but not size/website/assignee)
+            if (companyName == null || companyName.trim().isEmpty()) {
+                for (String key : csvData.keySet()) {
+                    String lowerKey = key.toLowerCase().trim();
+                    // Check if key contains "company" but exclude unwanted variations
+                    if (lowerKey.contains("company") && 
+                        !lowerKey.contains("size") && 
+                        !lowerKey.contains("website") && 
+                        !lowerKey.contains("assignee") &&
+                        !lowerKey.contains("email") &&
+                        !lowerKey.contains("provider")) {
+                        companyName = csvData.get(key);
+                        if (companyName != null && !companyName.trim().isEmpty()) {
+                            System.out.println("BUILD REPLACEMENT MAP - Found company name in CSV data using partial match: '" + key + "' = '" + companyName + "'");
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // Debug: log all CSV keys if company name still not found
+            if (companyName == null || companyName.trim().isEmpty()) {
+                System.out.println("BUILD REPLACEMENT MAP - WARNING: Could not find company name. Available CSV keys: " + csvData.keySet());
+            }
+        }
+        
+        // Last resort: Extract company name from email domain if still not found
+        if ((companyName == null || companyName.trim().isEmpty()) && lead.getEmail() != null) {
+            String email = lead.getEmail().trim();
+            int atIndex = email.indexOf('@');
+            if (atIndex > 0 && atIndex < email.length() - 1) {
+                String domain = email.substring(atIndex + 1);
+                // Remove common TLDs and extract company name
+                String domainWithoutTld = domain.replaceFirst("\\.(com|net|org|io|co|ai|app|dev|tech|xyz|uk|ca|au|de|fr|jp|cn)$", "");
+                
+                // Handle subdomains (e.g., "mail.company.com" -> "company")
+                if (domainWithoutTld.contains(".")) {
+                    String[] parts = domainWithoutTld.split("\\.");
+                    // Usually the company name is the second-to-last or last part
+                    domainWithoutTld = parts[parts.length - 1]; // Take the last part (main domain)
+                }
+                
+                // Convert to title case
+                if (domainWithoutTld.contains("-") || domainWithoutTld.contains("_")) {
+                    // Split on dashes/underscores: "modern-adventure" -> "Modern Adventure"
+                    String separator = domainWithoutTld.contains("-") ? "-" : "_";
+                    String[] parts = domainWithoutTld.split(separator);
+                    companyName = Arrays.stream(parts)
+                        .map(part -> part.substring(0, 1).toUpperCase() + part.substring(1).toLowerCase())
+                        .collect(java.util.stream.Collectors.joining(" "));
+                } else {
+                    // Try to detect camelCase and split it: "modernAdventure" -> "Modern Adventure"
+                    String withSpaces = domainWithoutTld.replaceAll("([a-z])([A-Z])", "$1 $2");
+                    // Capitalize first letter of each word
+                    String[] words = withSpaces.split("\\s+");
+                    companyName = Arrays.stream(words)
+                        .map(word -> word.substring(0, 1).toUpperCase() + word.substring(1).toLowerCase())
+                        .collect(java.util.stream.Collectors.joining(" "));
+                }
+                System.out.println("BUILD REPLACEMENT MAP - Extracted company name from email domain: '" + email + "' -> '" + companyName + "'");
+            }
+        }
+        
         if (lead.getFirstName() != null) {
             String firstName = lead.getFirstName();
             map.put("{{first_name}}", firstName);
@@ -419,18 +532,27 @@ public class EmailRenderService {
             map.put("lastName", lastName);
             map.put("Last Name", lastName);
         }
-        if (lead.getCompanyName() != null) {
-            String company = lead.getCompanyName();
+        if (companyName != null && !companyName.trim().isEmpty()) {
+            String company = companyName;
             map.put("{{company}}", company);
             map.put("{{company_name}}", company);
             map.put("{{Company_Name}}", company);  // User's preferred format
             map.put("{{Company}}", company);
             map.put("{{Company Name}}", company);
             map.put("{{Company name}}", company);
+            map.put("{{companyName}}", company);  // camelCase version
             map.put("company", company);
             map.put("company_name", company);
             map.put("Company", company);
             map.put("Company Name", company);
+            map.put("companyName", company);  // camelCase version
+            System.out.println("BUILD REPLACEMENT MAP - Added company name mappings: '" + company + "'");
+        } else {
+            System.err.println("BUILD REPLACEMENT MAP - WARNING: No company name found in lead entity or CSV data!");
+            System.err.println("BUILD REPLACEMENT MAP - Lead entity companyName: " + lead.getCompanyName());
+            if (csvData != null) {
+                System.err.println("BUILD REPLACEMENT MAP - CSV data keys: " + csvData.keySet());
+            }
         }
         if (lead.getJobTitle() != null) {
             String jobTitle = lead.getJobTitle();

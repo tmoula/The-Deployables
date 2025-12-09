@@ -131,8 +131,10 @@ export const campaignApi = {
       url.searchParams.append('leadId', leadId);
     }
     // Pass spintax seed for rotation - each preview refresh gets different spintax selections
+    // Ensure seed is an integer (backend expects Long, not decimal)
     if (spintaxSeed !== null) {
-      url.searchParams.append('spintaxSeed', spintaxSeed.toString());
+      const integerSeed = Math.floor(spintaxSeed);
+      url.searchParams.append('spintaxSeed', integerSeed.toString());
     }
     
     const response = await fetch(url, {
@@ -145,8 +147,17 @@ export const campaignApi = {
     });
     
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || `Failed to preview email: ${response.statusText}`);
+      let errorMessage = `Failed to preview email: ${response.statusText}`;
+      try {
+        const error = await response.json();
+        errorMessage = error.error || errorMessage;
+        console.error('Preview email error response:', error);
+      } catch (e) {
+        const errorText = await response.text();
+        console.error('Preview email error (non-JSON):', errorText);
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
     }
     
     return response.json();

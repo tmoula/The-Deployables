@@ -56,13 +56,40 @@ public class MailboxController {
             @RequestHeader(value = "X-User-Id", required = false) Long headerUserId,
             @Valid @RequestBody AddMailboxRequest request) {
         
+        System.out.println("ADD MAILBOX - Received request");
+        System.out.println("ADD MAILBOX - Email: " + (request != null ? request.email() : "null"));
+        System.out.println("ADD MAILBOX - DisplayName: " + (request != null ? request.displayName() : "null"));
+        System.out.println("ADD MAILBOX - AppPassword present: " + (request != null && request.appPassword() != null && !request.appPassword().isEmpty()));
+        
         Long userId = jwtUserId != null ? jwtUserId : headerUserId;
+        System.out.println("ADD MAILBOX - User ID: " + userId);
 
         if (userId == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            System.err.println("ADD MAILBOX - ERROR: No user ID provided");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(Map.of("error", "User ID is required"));
+        }
+        
+        if (request == null) {
+            System.err.println("ADD MAILBOX - ERROR: Request body is null");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(Map.of("error", "Request body is required"));
+        }
+        
+        if (request.email() == null || request.email().trim().isEmpty()) {
+            System.err.println("ADD MAILBOX - ERROR: Email is required");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(Map.of("error", "Email is required"));
+        }
+        
+        if (request.appPassword() == null || request.appPassword().trim().isEmpty()) {
+            System.err.println("ADD MAILBOX - ERROR: App password is required");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(Map.of("error", "App password is required"));
         }
         
         try {
+            System.out.println("ADD MAILBOX - Calling mailboxService.addMailbox");
             Mailbox mailbox = mailboxService.addMailbox(
                 userId,
                 request.email(),
@@ -70,11 +97,19 @@ public class MailboxController {
                 request.appPassword()
             );
             
+            System.out.println("ADD MAILBOX - Successfully created mailbox with ID: " + mailbox.getId());
             return ResponseEntity.status(HttpStatus.CREATED)
                 .body(MailboxResponse.fromEntity(mailbox));
         } catch (IllegalArgumentException e) {
+            System.err.println("ADD MAILBOX - ERROR: " + e.getMessage());
+            e.printStackTrace();
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            System.err.println("ADD MAILBOX - UNEXPECTED ERROR: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("error", "Failed to add mailbox: " + e.getMessage()));
         }
     }
     

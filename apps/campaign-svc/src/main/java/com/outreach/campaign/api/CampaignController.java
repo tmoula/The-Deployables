@@ -314,10 +314,34 @@ public class CampaignController {
     @PostMapping("/campaigns/{id}/preview-email")
     public ResponseEntity<?> previewEmail(
             @PathVariable String id,
-            @RequestBody Map<String, String> request,
+            @RequestBody(required = false) Map<String, String> request,
             @RequestParam(value = "leadId", required = false) Integer leadId,
-            @RequestParam(value = "spintaxSeed", required = false) Long spintaxSeed) {
+            @RequestParam(value = "spintaxSeed", required = false) String spintaxSeedStr) {
         try {
+            System.out.println("PREVIEW EMAIL - Received request for campaign ID: " + id);
+            System.out.println("PREVIEW EMAIL - Request body: " + (request != null ? request.toString() : "null"));
+            System.out.println("PREVIEW EMAIL - leadId param: " + leadId);
+            System.out.println("PREVIEW EMAIL - spintaxSeed param (raw): " + spintaxSeedStr);
+            
+            // Parse spintax seed - handle both integer and decimal strings gracefully
+            Long spintaxSeed = null;
+            if (spintaxSeedStr != null && !spintaxSeedStr.trim().isEmpty()) {
+                try {
+                    // Convert to double first to handle decimal strings, then floor to integer
+                    double seedDouble = Double.parseDouble(spintaxSeedStr.trim());
+                    spintaxSeed = (long) Math.floor(seedDouble);
+                    System.out.println("PREVIEW EMAIL - Parsed spintaxSeed: " + spintaxSeed);
+                } catch (NumberFormatException e) {
+                    System.err.println("PREVIEW EMAIL - Invalid spintaxSeed format: " + spintaxSeedStr + ", using current time");
+                    spintaxSeed = null; // Will fall back to current time
+                }
+            }
+            
+            if (request == null) {
+                return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Request body is required"));
+            }
+            
             Integer campaignId = Integer.parseInt(id);
             Optional<Campaign> campaignOpt = campaignService.getCampaignById(id);
             if (campaignOpt.isEmpty()) {
@@ -333,14 +357,29 @@ public class CampaignController {
             System.out.println("PREVIEW EMAIL - Body template length: " + (bodyTemplate != null ? bodyTemplate.length() : 0));
             System.out.println("PREVIEW EMAIL - Body template preview: " + (bodyTemplate != null ? bodyTemplate.substring(0, Math.min(200, bodyTemplate.length())) : "null"));
             
-            // Get a lead for preview
+            // Get a lead for preview - MUST have CSV data for variables to work
             LeadEntity lead;
             if (leadId != null) {
                 lead = leadRepository.findById(leadId).orElse(null);
                 System.out.println("PREVIEW EMAIL - Using specific lead ID: " + leadId);
+                // If specified lead has no CSV data, find one that does
+                if (lead != null && (lead.getCsvData() == null || lead.getCsvData().trim().isEmpty())) {
+                    System.out.println("PREVIEW EMAIL - Specified lead has no CSV data, finding one with CSV data...");
+                    LeadEntity csvLead = campaignLeadService.getLeadWithCsvData(campaignId);
+                    if (csvLead != null) {
+                        lead = csvLead;
+                        System.out.println("PREVIEW EMAIL - Switched to lead with CSV data: " + lead.getId());
+                    }
+                }
             } else {
+                // Always use random lead selection for preview (different lead each refresh)
+                // This gives users variety when testing their email templates
                 lead = campaignLeadService.getRandomLeadForCampaign(campaignId);
-                System.out.println("PREVIEW EMAIL - Using random lead: " + (lead != null ? lead.getId() : "null"));
+                if (lead != null) {
+                    System.out.println("PREVIEW EMAIL - Using random lead for preview: " + lead.getId());
+                } else {
+                    System.out.println("PREVIEW EMAIL - No leads found for campaign " + campaignId);
+                }
             }
             
             if (lead == null) {
@@ -350,24 +389,55 @@ public class CampaignController {
             }
             
             System.out.println("PREVIEW EMAIL - Lead data: firstName=" + lead.getFirstName() + ", email=" + lead.getEmail());
-            if (lead.getCsvData() != null) {
-                System.out.println("PREVIEW EMAIL - Lead has CSV data: " + lead.getCsvData().substring(0, Math.min(200, lead.getCsvData().length())));
+            System.out.println("PREVIEW EMAIL - Lead ID: " + lead.getId());
+            System.out.println("PREVIEW EMAIL - Lead has CSV data: " + (lead.getCsvData() != null && !lead.getCsvData().trim().isEmpty()));
+            if (lead.getCsvData() != null && !lead.getCsvData().trim().isEmpty()) {
+                System.out.println("PREVIEW EMAIL - Lead CSV data length: " + lead.getCsvData().length());
+                System.out.println("PREVIEW EMAIL - Lead CSV data preview: " + lead.getCsvData().substring(0, Math.min(500, lead.getCsvData().length())));
+            } else {
+                System.err.println("PREVIEW EMAIL - WARNING: Lead " + lead.getId() + " has NO CSV data! Variables will not be replaced.");
             }
             
-            // Use provided spintax seed or generate a random one for rotation
+            // Use provided spintax seed or generate one from current time for rotation
             // Each preview refresh will get a different seed, showing different spintax selections
-            Long seed = (spintaxSeed != null) ? spintaxSeed : System.currentTimeMillis();
+            long seed = (spintaxSeed != null) ? spintaxSeed : System.currentTimeMillis();
             System.out.println("PREVIEW EMAIL - Using spintax seed: " + seed);
             
             // Render email with lead data and spintax expansion
             List<String> csvColumns = campaign.csvColumns() != null ? campaign.csvColumns() : new ArrayList<>();
-            System.out.println("PREVIEW EMAIL - CSV columns: " + csvColumns);
+            System.out.println("PREVIEW EMAIL - CSV columns from campaign: " + csvColumns);
+            System.out.println("PREVIEW EMAIL - CSV columns count: " + csvColumns.size());
             
-            String renderedSubject = emailRenderService.renderEmail(subjectTemplate, lead, csvColumns, seed);
-            String renderedBody = emailRenderService.renderEmail(bodyTemplate, lead, csvColumns, seed);
+            String renderedSubject;
+            String renderedBody;
+            try {
+                renderedSubject = emailRenderService.renderEmail(subjectTemplate, lead, csvColumns, seed);
+                renderedBody = emailRenderService.renderEmail(bodyTemplate, lead, csvColumns, seed);
+                
+                System.out.println("PREVIEW EMAIL - Rendered subject: " + renderedSubject);
+                if (renderedBody != null && renderedBody.length() > 0) {
+                    System.out.println("PREVIEW EMAIL - Rendered body preview: " + renderedBody.substring(0, Math.min(200, renderedBody.length())));
+                } else {
+                    System.out.println("PREVIEW EMAIL - Rendered body is empty");
+                }
+            } catch (Exception renderException) {
+                System.err.println("PREVIEW EMAIL - Error during email rendering: " + renderException.getMessage());
+                renderException.printStackTrace();
+                // Return template as-is if rendering fails
+                renderedSubject = subjectTemplate;
+                renderedBody = bodyTemplate;
+            }
             
-            System.out.println("PREVIEW EMAIL - Rendered subject: " + renderedSubject);
-            System.out.println("PREVIEW EMAIL - Rendered body preview: " + renderedBody.substring(0, Math.min(200, renderedBody.length())));
+            // Parse CSV data to include in response for debugging
+            Map<String, String> csvDataMap = null;
+            if (lead.getCsvData() != null && !lead.getCsvData().trim().isEmpty()) {
+                try {
+                    csvDataMap = objectMapper.readValue(lead.getCsvData(), new com.fasterxml.jackson.core.type.TypeReference<Map<String, String>>() {});
+                    System.out.println("PREVIEW EMAIL - Parsed CSV data map with " + csvDataMap.size() + " fields");
+                } catch (Exception e) {
+                    System.err.println("PREVIEW EMAIL - Error parsing CSV data: " + e.getMessage());
+                }
+            }
             
             // Build response with lead info
             Map<String, Object> leadInfo = new HashMap<>();
@@ -377,6 +447,10 @@ public class CampaignController {
             leadInfo.put("companyName", lead.getCompanyName());
             leadInfo.put("email", lead.getEmail());
             leadInfo.put("jobTitle", lead.getJobTitle());
+            // Include CSV data in response for debugging
+            if (csvDataMap != null) {
+                leadInfo.put("csvData", csvDataMap);
+            }
             
             Map<String, Object> response = new HashMap<>();
             response.put("subject", renderedSubject);
@@ -384,9 +458,32 @@ public class CampaignController {
             response.put("lead", leadInfo);
             response.put("message", "Email preview rendered using sample lead data");
             
+            // Include CSV columns and available variables for debugging
+            Map<String, Object> debugInfo = new HashMap<>();
+            debugInfo.put("csvColumns", csvColumns);
+            debugInfo.put("csvColumnsCount", csvColumns.size());
+            if (csvDataMap != null) {
+                debugInfo.put("csvDataKeys", new ArrayList<>(csvDataMap.keySet()));
+                debugInfo.put("csvDataKeysCount", csvDataMap.size());
+            } else {
+                debugInfo.put("csvDataKeys", new ArrayList<>());
+                debugInfo.put("csvDataKeysCount", 0);
+                debugInfo.put("warning", "No CSV data found for this lead. Variables may not work correctly.");
+            }
+            response.put("debug", debugInfo);
+            
             return ResponseEntity.ok(response);
+        } catch (NumberFormatException e) {
+            System.err.println("PREVIEW EMAIL - Invalid campaign ID format: " + id);
+            return ResponseEntity.badRequest()
+                .body(Map.of("error", "Invalid campaign ID: " + id));
+        } catch (IllegalArgumentException e) {
+            System.err.println("PREVIEW EMAIL - IllegalArgumentException: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest()
+                .body(Map.of("error", "Invalid request: " + e.getMessage()));
         } catch (Exception e) {
-            System.out.println("PREVIEW EMAIL - Error: " + e.getMessage());
+            System.err.println("PREVIEW EMAIL - Unexpected error: " + e.getMessage());
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of("error", "Failed to preview email: " + e.getMessage()));

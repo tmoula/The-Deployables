@@ -78,3 +78,5 @@ CREATE INDEX IF NOT EXISTS idx_leads_campaign_id ON leads(campaign_id);
 -- Note: batch_id can remain for AI-generated leads, but campaign_id will be used for CSV imports
 
 
+
+

@@ -60,6 +60,19 @@ public class MailboxService {
         
         // Create and save mailbox
         Mailbox mailbox = new Mailbox(userId, email, displayName, encryptedPassword);
+        
+        // Set required fields for new schema
+        mailbox.setEmailAddress(email); // Set emailAddress field
+        mailbox.setProvider("gmail"); // Default to gmail
+        mailbox.setIsVerified(true); // Mark as verified after successful connection test
+        
+        // Extract domain from email
+        if (email != null && email.contains("@")) {
+            String domain = email.substring(email.indexOf("@") + 1);
+            mailbox.setDomain(domain);
+        }
+        
+        System.out.println("Saving mailbox with provider: " + mailbox.getProvider() + ", emailAddress: " + mailbox.getEmailAddress());
         return mailboxRepository.save(mailbox);
     }
     

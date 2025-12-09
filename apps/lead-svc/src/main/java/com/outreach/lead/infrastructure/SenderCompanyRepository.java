@@ -12,3 +12,5 @@ public interface SenderCompanyRepository extends JpaRepository<SenderCompanyEnti
 }
 
 
+
+

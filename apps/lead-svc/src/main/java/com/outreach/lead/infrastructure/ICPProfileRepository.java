@@ -16,3 +16,5 @@ public interface ICPProfileRepository extends JpaRepository<ICPProfileEntity, In
 }
 
 
+
+

@@ -60,11 +60,20 @@ export const mailboxApi = {
 
         if (!response.ok) {
             const text = await response.text();
+            console.error('Mailbox API Error Response:', text);
             try {
                 const error = JSON.parse(text);
+                // Handle validation errors
+                if (error.errors) {
+                    const errorMessages = Object.values(error.errors).join(', ');
+                    throw new Error(`Validation failed: ${errorMessages}`);
+                }
                 throw new Error(error.error || 'Failed to add mailbox');
             } catch (e) {
-                throw new Error(`Failed to add mailbox: ${response.status} ${response.statusText} - ${text.substring(0, 100)}`);
+                if (e.message.includes('Validation failed')) {
+                    throw e;
+                }
+                throw new Error(`Failed to add mailbox: ${response.status} ${response.statusText} - ${text.substring(0, 200)}`);
             }
         }
 

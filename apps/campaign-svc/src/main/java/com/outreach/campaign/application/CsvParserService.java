@@ -48,15 +48,16 @@ public class CsvParserService {
             System.out.println("CSV PARSER - Extracted " + columns.size() + " columns: " + columns);
             
             // Find column indices for standard fields (for Lead object creation)
+            // Use flexible matching to find columns with variations
             int matchScoreIdx = findColumnIndex(headers, "Match Score");
-            int companyIdx = findColumnIndex(headers, "Company");
-            int firstNameIdx = findColumnIndex(headers, "First Name");
-            int lastNameIdx = findColumnIndex(headers, "Last Name");
-            int positionIdx = findColumnIndex(headers, "Position");
-            int emailIdx = findColumnIndex(headers, "Email");
-            int domainIdx = findColumnIndex(headers, "Domain");
+            int companyIdx = findColumnIndexFlexible(headers, new String[]{"Company", "Company Name", "Company_Name", "companyName", "CompanyName"});
+            int firstNameIdx = findColumnIndexFlexible(headers, new String[]{"First Name", "FirstName", "first_name", "First_Name"});
+            int lastNameIdx = findColumnIndexFlexible(headers, new String[]{"Last Name", "LastName", "last_name", "Last_Name"});
+            int positionIdx = findColumnIndexFlexible(headers, new String[]{"Position", "Job Title", "JobTitle", "job_title", "Job_Title", "Title"});
+            int emailIdx = findColumnIndexFlexible(headers, new String[]{"Email", "E-mail", "email_address", "Email Address"});
+            int domainIdx = findColumnIndexFlexible(headers, new String[]{"Domain", "Website", "Company Website", "CompanyWebsite"});
             int industryIdx = findColumnIndex(headers, "Industry");
-            int companySizeIdx = findColumnIndex(headers, "Company Size");
+            int companySizeIdx = findColumnIndexFlexible(headers, new String[]{"Company Size", "CompanySize", "company_size", "Size"});
             int regionsIdx = findColumnIndex(headers, "Regions");
             int techStackIdx = findColumnIndex(headers, "Tech Stack");
             int keywordsIdx = findColumnIndex(headers, "Keywords");
@@ -233,6 +234,20 @@ public class CsvParserService {
             }
         }
         return -1; // Column not found
+    }
+    
+    /**
+     * Find column index by trying multiple possible column names (case-insensitive)
+     * Returns the first match found
+     */
+    private int findColumnIndexFlexible(String[] headers, String[] possibleNames) {
+        for (String name : possibleNames) {
+            int idx = findColumnIndex(headers, name);
+            if (idx >= 0) {
+                return idx;
+            }
+        }
+        return -1; // No match found
     }
     
     private String getValue(String[] values, int index) {

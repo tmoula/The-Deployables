@@ -785,7 +785,8 @@ Best regards,<br>
       setPreviewLoading(true);
       // Generate a new seed for spintax rotation if not provided
       // Each preview refresh will show different spintax selections
-      const seed = spintaxSeed !== null ? spintaxSeed : Date.now() + Math.random() * 1000000;
+      // Use integer seed - backend expects Long (integer), not decimal
+      const seed = spintaxSeed !== null ? Math.floor(spintaxSeed) : Date.now();
       
       const result = await campaignApi.previewEmail(
         campaignId,
@@ -797,16 +798,28 @@ Best regards,<br>
       setPreviewData(result);
       // Also update contactData from the lead info returned
       if (result.lead) {
-        setContactData({
+        const contactDataUpdate = {
           firstName: result.lead.firstName,
           lastName: result.lead.lastName,
           companyName: result.lead.companyName,
           email: result.lead.email,
           jobTitle: result.lead.jobTitle,
           ...result.lead // Include any other CSV columns
-        });
+        };
+        // If CSV data is included in the response, merge it into contactData
+        if (result.lead.csvData) {
+          Object.assign(contactDataUpdate, result.lead.csvData);
+          console.log('✅ Merged CSV data into contactData:', Object.keys(result.lead.csvData));
+        }
+        setContactData(contactDataUpdate);
+        console.log('✅ Updated contactData with keys:', Object.keys(contactDataUpdate));
       }
-      console.log('✅ Preview loaded from backend with spintax seed:', seed, result);
+      console.log('✅ Preview loaded from backend with spintax seed:', seed);
+      console.log('✅ Preview result:', {
+        subject: result.subject,
+        bodyPreview: result.body?.substring(0, 200),
+        lead: result.lead
+      });
     } catch (error) {
       console.error('❌ Failed to load preview:', error);
       // Fallback to local preview if backend fails
@@ -957,8 +970,9 @@ Best regards,<br>
                 ref={autocompleteRef}
                 className="absolute z-50 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto min-w-[200px]"
                 style={{
-                  top: `${autocompletePosition.top}px`,
-                  left: `${autocompletePosition.left}px`,
+                  // Anchor to the subject input wrapper instead of viewport coords
+                  top: 'calc(100% + 6px)',
+                  left: '0px',
                 }}
               >
                 {autocompleteSuggestions.map((suggestion, index) => {

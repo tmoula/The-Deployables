@@ -89,15 +89,15 @@ public class CampaignService {
         List<String> csvColumns = parseCsvColumns(csvColumnsJson);
         return new Campaign(
                 String.valueOf(entity.getId()),
-                name,
-                description,
-                Campaign.CampaignStatus.DRAFT,
+            name,
+            description,
+            Campaign.CampaignStatus.DRAFT,
                 entity.getCreatedAt(),
-                LocalDateTime.now(),
-                leads != null ? new ArrayList<>(leads) : new ArrayList<>(),
-                leads != null ? leads.size() : 0,
-                0,
-                0,
+            LocalDateTime.now(),
+            leads != null ? new ArrayList<>(leads) : new ArrayList<>(),
+            leads != null ? leads.size() : 0,
+            0,
+            0,
                 0,
                 csvFilename,
                 csvColumns,
@@ -136,7 +136,7 @@ public class CampaignService {
                 })
                 .collect(Collectors.toList());
     }
-
+    
     public Optional<Campaign> getCampaignById(String id) {
         try {
             Integer campaignId = Integer.parseInt(id);
@@ -168,7 +168,7 @@ public class CampaignService {
 
         return Optional.empty();
     }
-
+    
     @Transactional
     public Campaign updateCampaignStatus(String id, Campaign.CampaignStatus status) {
         Integer campaignId;
@@ -179,8 +179,8 @@ public class CampaignService {
         }
 
         CampaignEntity entity = campaignRepository.findById(campaignId)
-                .orElseThrow(() -> new IllegalArgumentException("Campaign not found: " + id));
-
+            .orElseThrow(() -> new IllegalArgumentException("Campaign not found: " + id));
+        
         entity.setStatus(status.name().toLowerCase());
         campaignRepository.save(entity);
         
@@ -191,9 +191,9 @@ public class CampaignService {
                 String.valueOf(entity.getId()),
                 entity.getName(),
                 "",
-                status,
+            status,
                 entity.getCreatedAt(),
-                LocalDateTime.now(),
+            LocalDateTime.now(),
                 new ArrayList<>(),
                 (int) leadCount,
                 0,
@@ -205,7 +205,7 @@ public class CampaignService {
                 entity.getEmailBody()
         );
     }
-
+    
     public List<Lead> getCampaignLeads(String campaignId) {
         return List.of();
     }
