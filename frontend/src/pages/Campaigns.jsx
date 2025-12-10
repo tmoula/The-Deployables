@@ -3,7 +3,7 @@ import {
   Mail, Upload, Play, Pause, CheckCircle, XCircle, Users, Eye, 
   Search, Filter, ChevronDown, MoreVertical, Send, MailOpen, 
   MousePointerClick, MessageSquare, DollarSign, AlertTriangle,
-  Calendar, FileText, Settings
+  Calendar, FileText, Settings, Rocket
 } from "lucide-react";
 import { format } from "date-fns";
 import { campaignApi } from "../services/campaignApi";
@@ -11,6 +11,7 @@ import Step1UploadCsv from "./campaignSteps/Step1UploadCsv";
 import Step2ComposeEmail from "./campaignSteps/Step2ComposeEmail";
 import Step3CampaignSettings from "./campaignSteps/Step3CampaignSettings";
 import Step4Review from "./campaignSteps/Step4Review";
+import Step5Send from "./campaignSteps/Step5Send";
 
 export default function Campaigns() {
   const [campaigns, setCampaigns] = useState([]);
@@ -40,10 +41,11 @@ export default function Campaigns() {
     startDate: "",
     endDate: "",
     activeDays: [],
-    timezone: "UTC",
+    timezone: "America/New_York", // EST/EDT timezone
     startTime: "09:00",
     endTime: "17:00",
-    selectedMailboxIds: []
+    selectedMailboxIds: [],
+    emailDelayMinutes: 5 // Default 5 minutes between emails
   });
   const [emailVariants, setEmailVariants] = useState([
     { id: 1, subject: "", content: "", isActive: true }
@@ -62,11 +64,11 @@ export default function Campaigns() {
   const [openMenuId, setOpenMenuId] = useState(null);
   const [editingCampaignId, setEditingCampaignId] = useState(null);
 
-  // Load contacts when entering Step 2
+  // Load contacts when entering Step 2 or Step 4
   useEffect(() => {
-    if (currentStep === 2) {
-      const campaignIdForContacts = editingCampaignId ? parseInt(editingCampaignId) : (selectedCampaign ? (parseInt(selectedCampaign.id) || 1) : 1);
-      if (campaignContacts.length === 0 && !selectedContactId) {
+    if (currentStep === 2 || currentStep === 4) {
+      const campaignIdForContacts = editingCampaignId ? parseInt(editingCampaignId) : (selectedCampaign ? (parseInt(selectedCampaign.id) || null) : null);
+      if (campaignIdForContacts && (campaignContacts.length === 0 || currentStep === 4)) {
         loadCampaignContacts(campaignIdForContacts);
       }
     }
@@ -247,6 +249,155 @@ export default function Campaigns() {
     } catch (error) {
       console.error("Upload failed:", error);
       alert("Failed to upload CSV: " + error.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // Finalize campaign - save email and schedule
+  const handleFinalizeCampaign = async () => {
+    if (!uploadedFile) {
+      alert("Please upload a CSV file first");
+      return;
+    }
+
+    try {
+      setUploading(true);
+      
+      // Get campaign ID - should already exist from step 1 upload
+      let campaignId;
+      if (selectedCampaign && selectedCampaign.id) {
+        campaignId = parseInt(selectedCampaign.id);
+      } else {
+        // If no selectedCampaign, upload CSV and create campaign first
+        const result = await campaignApi.uploadCsv(
+          uploadedFile,
+          campaignName.trim(),
+          description || undefined
+        );
+        const campaign = result.campaign || result;
+        campaignId = parseInt(campaign.id || campaign.id);
+        if (!campaignId || isNaN(campaignId)) {
+          throw new Error("Failed to get campaign ID from upload");
+        }
+        // Set selected campaign for next steps
+        setSelectedCampaign(campaign);
+      }
+      
+      // Save email templates
+      if (emailSubject || emailContent) {
+        await campaignApi.saveCampaignEmail(campaignId, emailSubject, emailContent);
+        console.log('✅ Email templates saved');
+      }
+      
+      // Schedule campaign with settings
+      // Combine date and time in EST timezone, then convert to UTC for storage
+      let startDateUTC = null;
+      
+      // Helper function to convert EST date+time to UTC ISO string
+      const convertESTToUTC = (dateStr, timeStr) => {
+        // dateStr format: YYYY-MM-DD
+        // timeStr format: HH:mm
+        const [year, month, day] = dateStr.split('-').map(Number);
+        const [hours, minutes] = timeStr.split(':').map(Number);
+        
+        // Create a date string that represents the time in EST
+        // We'll use the Intl API to properly handle EST/EDT (daylight saving)
+        // Format: "2024-01-15T09:00:00" and interpret as EST
+        const dateTimeStr = `${dateStr}T${timeStr}:00`;
+        
+        // Use Intl.DateTimeFormat to get the UTC offset for EST at this date
+        // Create a date object assuming the input is in EST
+        // We need to manually calculate the offset
+        
+        // Try to create a date using a known approach:
+        // 1. Create date assuming local time
+        // 2. Get what EST offset is for that date
+        // 3. Adjust accordingly
+        
+        // Simpler approach: use Date with explicit EST offset
+        // EST is UTC-5, EDT (daylight time) is UTC-4
+        // Check if date is in DST period (roughly March-November in US)
+        const monthIndex = month - 1;
+        const isDST = (monthIndex >= 2 && monthIndex <= 9) || 
+                     (monthIndex === 2 && day >= 14) || 
+                     (monthIndex === 10 && day <= 7);
+        
+        const estOffsetHours = isDST ? -4 : -5; // EDT is UTC-4, EST is UTC-5
+        
+        // Create UTC date by subtracting the offset (so UTC = EST - offset)
+        // If user wants 9 AM EST, UTC is 9 - (-5) = 14:00 (2 PM) in winter
+        // Or 9 - (-4) = 13:00 (1 PM) in summer
+        const utcHours = hours - estOffsetHours;
+        
+        // Handle hour overflow/underflow
+        let utcDay = day;
+        let utcMonth = monthIndex;
+        let utcYear = year;
+        let finalHours = utcHours;
+        
+        if (finalHours >= 24) {
+          finalHours -= 24;
+          utcDay++;
+          // Handle month/year overflow
+          const daysInMonth = new Date(year, month, 0).getDate();
+          if (utcDay > daysInMonth) {
+            utcDay = 1;
+            utcMonth++;
+            if (utcMonth >= 12) {
+              utcMonth = 0;
+              utcYear++;
+            }
+          }
+        } else if (finalHours < 0) {
+          finalHours += 24;
+          utcDay--;
+          if (utcDay < 1) {
+            utcMonth--;
+            if (utcMonth < 0) {
+              utcMonth = 11;
+              utcYear--;
+            }
+            const daysInPrevMonth = new Date(utcYear, utcMonth + 1, 0).getDate();
+            utcDay = daysInPrevMonth;
+          }
+        }
+        
+        // Create UTC date
+        const utcDate = new Date(Date.UTC(utcYear, utcMonth, utcDay, finalHours, minutes, 0));
+        return utcDate.toISOString();
+      };
+      
+      if (campaignSettings.startDate) {
+        const dateStr = campaignSettings.startDate; // YYYY-MM-DD
+        const timeStr = campaignSettings.startTime || "09:00"; // HH:mm
+        startDateUTC = convertESTToUTC(dateStr, timeStr);
+        console.log(`📅 Converting ${dateStr} ${timeStr} EST to UTC: ${startDateUTC}`);
+      } else {
+        // Default to current time
+        startDateUTC = new Date().toISOString();
+      }
+      
+      const scheduleData = {
+        startDate: startDateUTC,
+        selectedMailboxIds: campaignSettings.selectedMailboxIds || [],
+        emailDelayMinutes: campaignSettings.emailDelayMinutes || 5 // Default to 5 minutes
+      };
+      
+      if (scheduleData.selectedMailboxIds.length > 0 || scheduleData.startDate) {
+        await campaignApi.scheduleCampaign(campaignId, scheduleData);
+        console.log('✅ Campaign scheduled');
+      }
+      
+      alert(`Campaign "${campaignName}" created and scheduled successfully!`);
+      
+      // Reset and reload
+      resetCampaignCreation();
+      loadCampaigns();
+      
+    } catch (error) {
+      console.error("Failed to finalize campaign:", error);
+      alert("Failed to create campaign: " + error.message);
     } finally {
       setUploading(false);
     }
@@ -439,7 +590,8 @@ export default function Campaigns() {
     { number: 1, title: "Upload CSV", icon: Upload },
     { number: 2, title: "Compose Email", icon: Mail },
     { number: 3, title: "Campaign Settings", icon: Settings },
-    { number: 4, title: "Review", icon: CheckCircle }
+    { number: 4, title: "Review", icon: CheckCircle },
+    { number: 5, title: "Send", icon: Rocket }
   ];
 
   const renderStepper = () => {
@@ -622,6 +774,61 @@ export default function Campaigns() {
                   emailSubject={emailSubject}
                   emailContent={emailContent}
                   campaignSettings={campaignSettings}
+                  campaignId={editingCampaignId ? parseInt(editingCampaignId) : (selectedCampaign ? (parseInt(selectedCampaign.id) || null) : null)}
+                  campaignContacts={campaignContacts}
+                />
+              </div>
+            )}
+
+            {/* Step 5: Send */}
+            {currentStep === 5 && (
+              <div className="bg-white rounded-lg shadow p-6">
+                <Step5Send
+                  campaignName={campaignName}
+                  campaignId={editingCampaignId ? parseInt(editingCampaignId) : (selectedCampaign ? (parseInt(selectedCampaign.id) || null) : null)}
+                  campaignContacts={campaignContacts}
+                  campaignSettings={campaignSettings}
+                  emailSubject={emailSubject}
+                  emailContent={emailContent}
+                  isEditing={!!editingCampaignId}
+                  onSaveCampaign={async () => {
+                    // Save campaign first if not editing
+                    if (!editingCampaignId) {
+                      try {
+                        // Get campaign ID - should already exist from step 1 upload
+                        let savedCampaignId;
+                        if (selectedCampaign && selectedCampaign.id) {
+                          savedCampaignId = parseInt(selectedCampaign.id);
+                        } else {
+                          // Upload CSV and create campaign
+                          if (!uploadedFile) {
+                            throw new Error("No file uploaded");
+                          }
+                          const result = await campaignApi.uploadCsv(
+                            uploadedFile,
+                            campaignName.trim(),
+                            description || undefined
+                          );
+                          const campaign = result.campaign || result;
+                          savedCampaignId = parseInt(campaign.id || campaign.id);
+                          if (!savedCampaignId || isNaN(savedCampaignId)) {
+                            throw new Error("Failed to get campaign ID from upload");
+                          }
+                          setSelectedCampaign(campaign);
+                        }
+                        return savedCampaignId;
+                      } catch (error) {
+                        console.error("Failed to save campaign:", error);
+                        throw error;
+                      }
+                    }
+                    return editingCampaignId ? parseInt(editingCampaignId) : null;
+                  }}
+                  onSendComplete={() => {
+                    // After sending, reload campaigns and reset
+                    loadCampaigns();
+                    resetCampaignCreation();
+                  }}
                 />
               </div>
             )}
@@ -648,7 +855,7 @@ export default function Campaigns() {
                 {currentStep === 1 ? (editingCampaignId ? "Cancel" : "Cancel") : "Back"}
               </button>
               <div className="flex gap-2">
-                {currentStep < 4 ? (
+                {currentStep < 5 ? (
                   <button
                     onClick={async () => {
                       if (currentStep === 1) {
@@ -698,33 +905,9 @@ export default function Campaigns() {
                     }}
                     className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"
                   >
-                    Next
+                    {currentStep === 4 ? "Continue to Send" : "Next"}
                   </button>
-                ) : (
-                  <button
-                    onClick={() => {
-                      if (editingCampaignId) {
-                        // Save all changes for existing campaign
-                        // TODO: Call API to update campaign with all changes
-                        alert("Campaign updated successfully!");
-                        setEditingCampaignId(null);
-                        setCurrentStep(1);
-                        setOpenMenuId(null);
-                        loadCampaigns();
-                      } else {
-                        handleFileUpload();
-                      }
-                    }}
-                    disabled={uploading}
-                    className="px-6 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg transition"
-                  >
-                    {uploading 
-                      ? "Creating..." 
-                      : editingCampaignId 
-                        ? "Save Campaign" 
-                        : "Create Campaign"}
-                  </button>
-                )}
+                ) : null}
               </div>
             </div>
           )}
@@ -733,8 +916,26 @@ export default function Campaigns() {
     );
   }
 
+  // Campaign Details View - for editing existing campaigns (separate from creation flow)
+  if (selectedCampaign && !showCreateCampaign && !editingCampaignId) {
+    return (
+      <div className="p-6">
+        <button
+          onClick={() => {
+            setSelectedCampaign(null);
+            setCampaignLeads([]);
+          }}
+          className="mb-4 text-blue-600 hover:text-blue-800"
+        >
+          ← Back to Campaigns
+        </button>
+        {/* Rest of campaign details view */}
+      </div>
+    );
+  }
+
   // Campaign Details View
-  if (selectedCampaign) {
+  if (selectedCampaign && !showCreateCampaign && !editingCampaignId) {
     return (
       <div className="p-6 bg-gray-50 min-h-screen">
         <div className="bg-white rounded-lg shadow">

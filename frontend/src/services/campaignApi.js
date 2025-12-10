@@ -108,11 +108,22 @@ export const campaignApi = {
 
   // Get contacts for a campaign
   async getCampaignContacts(campaignId) {
-    const response = await fetch(`${CAMPAIGN_API_URL}/campaigns/${campaignId}/contacts`);
+    const headers = getUserEmailHeaders({
+      'Content-Type': 'application/json'
+    });
+    console.log('📋 Fetching campaign contacts for campaign:', campaignId);
+    const response = await fetch(`${CAMPAIGN_API_URL}/campaigns/${campaignId}/contacts`, {
+      method: 'GET',
+      headers: headers
+    });
     if (!response.ok) {
-      throw new Error(`Failed to fetch contacts: ${response.statusText}`);
+      const errorBody = await response.json().catch(() => ({ error: response.statusText }));
+      console.error('❌ Failed to fetch contacts:', errorBody);
+      throw new Error(`Failed to fetch contacts: ${errorBody.error || response.statusText}`);
     }
-    return response.json();
+    const data = await response.json();
+    console.log('✅ Fetched contacts:', data);
+    return data;
   },
 
   // Get merge fields (CSV columns) for a campaign
@@ -208,6 +219,33 @@ export const campaignApi = {
     
     const data = await response.json();
     console.log('💾 Email saved successfully:', data);
+    return data;
+  },
+
+  // Schedule campaign with start date and mailboxes
+  async scheduleCampaign(campaignId, scheduleSettings) {
+    const headers = getUserEmailHeaders({
+      'Content-Type': 'application/json'
+    });
+    
+    console.log('📅 Scheduling campaign:', campaignId, scheduleSettings);
+    
+    const response = await fetch(`${CAMPAIGN_API_URL}/campaigns/${campaignId}/schedule`, {
+      method: 'PUT',
+      headers: headers,
+      body: JSON.stringify(scheduleSettings)
+    });
+    
+    console.log('📅 Schedule campaign response status:', response.status);
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: response.statusText }));
+      console.error('📅 Schedule campaign error:', error);
+      throw new Error(error.error || `Failed to schedule campaign: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log('📅 Campaign scheduled successfully:', data);
     return data;
   }
 };

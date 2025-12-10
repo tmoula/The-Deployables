@@ -1,4 +1,4 @@
-package com.outreach.campaign.application;
+package com.outreach.campaign.application.common;
 
 import com.outreach.campaign.domain.entities.UserSummary;
 import com.outreach.campaign.infrastructure.UserRepository;

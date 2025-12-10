@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import Topbar from "../components/Topbar";
 import { mailboxApi } from '../services/mailboxApi';
-import { Mail, Plus, Pause, Play, Trash2, TestTube, AlertCircle, CheckCircle } from 'lucide-react';
+import { Mail, Plus, Trash2, AlertCircle, CheckCircle } from 'lucide-react';
 
 export default function Mailboxes() {
     const [mailboxes, setMailboxes] = useState([]);
@@ -47,16 +47,6 @@ export default function Mailboxes() {
         }
     };
 
-    const handleToggleStatus = async (mailbox) => {
-        const newStatus = mailbox.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE';
-        try {
-            await mailboxApi.updateStatus(mailbox.id, newStatus);
-            loadMailboxes();
-        } catch (err) {
-            setError('Failed to update status: ' + err.message);
-        }
-    };
-
     const handleDelete = async (id) => {
         if (!window.confirm('Are you sure you want to disconnect this mailbox?')) {
             return;
@@ -68,19 +58,6 @@ export default function Mailboxes() {
             loadMailboxes();
         } catch (err) {
             setError('Failed to remove mailbox: ' + err.message);
-        }
-    };
-
-    const handleTest = async (id) => {
-        try {
-            const result = await mailboxApi.testConnection(id);
-            if (result.connected) {
-                setSuccess('Connection test successful!');
-            } else {
-                setError('Connection test failed');
-            }
-        } catch (err) {
-            setError('Connection test failed: ' + err.message);
         }
     };
 
@@ -144,43 +121,34 @@ export default function Mailboxes() {
                                             <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
                                                 <Mail size={20} className="text-blue-600" />
                                             </div>
-                                            <div>
+                                            <div className="flex-1">
                                                 <h3 className="font-semibold text-gray-900">{mailbox.displayName || 'Gmail'}</h3>
                                                 <p className="text-sm text-gray-600">{mailbox.email}</p>
                                             </div>
                                         </div>
-                                        <span className={`px-2 py-1 text-xs rounded-full ${mailbox.status === 'ACTIVE'
-                                                ? 'bg-green-100 text-green-800'
-                                                : 'bg-yellow-100 text-yellow-800'
-                                            }`}>
-                                            {mailbox.status}
-                                        </span>
+                                        <div className="flex items-center gap-2">
+                                            {mailbox.isVerified ? (
+                                                <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800 flex items-center gap-1">
+                                                    <CheckCircle size={12} />
+                                                    Connected
+                                                </span>
+                                            ) : (
+                                                <span className="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-800">
+                                                    Pending
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
 
                                     {/* Actions */}
-                                    <div className="flex gap-2">
-                                        <button
-                                            onClick={() => handleToggleStatus(mailbox)}
-                                            className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded text-sm transition"
-                                            title={mailbox.status === 'ACTIVE' ? 'Pause' : 'Resume'}
-                                        >
-                                            {mailbox.status === 'ACTIVE' ? <Pause size={16} /> : <Play size={16} />}
-                                            {mailbox.status === 'ACTIVE' ? 'Pause' : 'Resume'}
-                                        </button>
-                                        <button
-                                            onClick={() => handleTest(mailbox.id)}
-                                            className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded text-sm transition"
-                                            title="Test Connection"
-                                        >
-                                            <TestTube size={16} />
-                                            Test
-                                        </button>
+                                    <div className="flex justify-end">
                                         <button
                                             onClick={() => handleDelete(mailbox.id)}
-                                            className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded text-sm transition"
-                                            title="Disconnect"
+                                            className="flex items-center gap-2 px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg text-sm transition"
+                                            title="Disconnect Mailbox"
                                         >
                                             <Trash2 size={16} />
+                                            Disconnect
                                         </button>
                                     </div>
                                 </div>

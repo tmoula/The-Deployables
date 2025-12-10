@@ -1,4 +1,4 @@
-package com.outreach.campaign.application;
+package com.outreach.campaign.application.csv;
 
 import com.outreach.campaign.domain.models.Lead;
 import java.util.List;

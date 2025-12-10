@@ -106,8 +106,8 @@ export default function SendTimeSettings({
             <h4 className="text-base font-semibold text-gray-800">
               Send Time Window
             </h4>
-            <p className="text-xs text-gray-600">
-              Set the time range when emails can be sent
+              <p className="text-xs text-gray-600">
+              Set the time range when emails can be sent (EST/EDT)
             </p>
           </div>
         </div>

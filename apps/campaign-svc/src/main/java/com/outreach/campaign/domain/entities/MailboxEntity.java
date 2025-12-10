@@ -29,6 +29,36 @@ public class MailboxEntity {
     @Column(name = "warmup_status")
     private String warmupStatus;  // none, running, paused
     
+    // SMTP/IMAP Configuration
+    @Column(name = "smtp_host")
+    private String smtpHost;
+    
+    @Column(name = "smtp_port")
+    private Integer smtpPort;
+    
+    @Column(name = "imap_host")
+    private String imapHost;
+    
+    @Column(name = "imap_port")
+    private Integer imapPort;
+    
+    // OAuth Configuration
+    @Column(name = "access_token", columnDefinition = "TEXT")
+    private String accessToken;
+    
+    @Column(name = "refresh_token", columnDefinition = "TEXT")
+    private String refreshToken;
+    
+    @Column(name = "token_expires_at")
+    private LocalDateTime tokenExpiresAt;
+    
+    @Column(name = "oauth_provider")
+    private String oauthProvider;
+    
+    // App Password (encrypted) for SMTP fallback
+    @Column(name = "encrypted_password", columnDefinition = "TEXT")
+    private String encryptedPassword;
+    
     @Column(name = "created_at")
     private LocalDateTime createdAt;
     
@@ -56,5 +86,34 @@ public class MailboxEntity {
     
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+    
+    // SMTP/IMAP getters and setters
+    public String getSmtpHost() { return smtpHost; }
+    public void setSmtpHost(String smtpHost) { this.smtpHost = smtpHost; }
+    
+    public Integer getSmtpPort() { return smtpPort; }
+    public void setSmtpPort(Integer smtpPort) { this.smtpPort = smtpPort; }
+    
+    public String getImapHost() { return imapHost; }
+    public void setImapHost(String imapHost) { this.imapHost = imapHost; }
+    
+    public Integer getImapPort() { return imapPort; }
+    public void setImapPort(Integer imapPort) { this.imapPort = imapPort; }
+    
+    // OAuth getters and setters
+    public String getAccessToken() { return accessToken; }
+    public void setAccessToken(String accessToken) { this.accessToken = accessToken; }
+    
+    public String getRefreshToken() { return refreshToken; }
+    public void setRefreshToken(String refreshToken) { this.refreshToken = refreshToken; }
+    
+    public LocalDateTime getTokenExpiresAt() { return tokenExpiresAt; }
+    public void setTokenExpiresAt(LocalDateTime tokenExpiresAt) { this.tokenExpiresAt = tokenExpiresAt; }
+    
+    public String getOauthProvider() { return oauthProvider; }
+    public void setOauthProvider(String oauthProvider) { this.oauthProvider = oauthProvider; }
+    
+    public String getEncryptedPassword() { return encryptedPassword; }
+    public void setEncryptedPassword(String encryptedPassword) { this.encryptedPassword = encryptedPassword; }
 }
 

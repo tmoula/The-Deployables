@@ -1,9 +1,12 @@
-package com.outreach.campaign.application;
+package com.outreach.campaign.application.campaign;
 
+import com.outreach.campaign.application.lead.CampaignLeadService;
 import com.outreach.campaign.domain.models.Campaign;
 import com.outreach.campaign.domain.entities.CampaignEntity;
+import com.outreach.campaign.domain.entities.CampaignMailboxEntity;
 import com.outreach.campaign.domain.models.Lead;
 import com.outreach.campaign.infrastructure.CampaignRepository;
+import com.outreach.campaign.infrastructure.CampaignMailboxRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -11,8 +14,12 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -21,11 +28,17 @@ public class CampaignService {
 
     private final CampaignRepository campaignRepository;
     private final CampaignLeadService campaignLeadService;
+    private final CampaignMailboxRepository campaignMailboxRepository;
     private final ObjectMapper objectMapper;
 
-    public CampaignService(CampaignRepository campaignRepository, CampaignLeadService campaignLeadService) {
+    public CampaignService(
+        CampaignRepository campaignRepository, 
+        CampaignLeadService campaignLeadService,
+        CampaignMailboxRepository campaignMailboxRepository
+    ) {
         this.campaignRepository = campaignRepository;
         this.campaignLeadService = campaignLeadService;
+        this.campaignMailboxRepository = campaignMailboxRepository;
         this.objectMapper = new ObjectMapper();
     }
     
@@ -250,6 +263,172 @@ public class CampaignService {
         campaign.setEmailSubject(emailSubject);
         campaign.setEmailBody(emailBody);
         campaignRepository.save(campaign);
+    }
+    
+    /**
+     * Schedule a campaign with start date and selected mailboxes
+     */
+    @Transactional
+    public void scheduleCampaign(Integer campaignId, Integer userId, Map<String, Object> settings) {
+        CampaignEntity campaign = campaignRepository.findById(campaignId)
+            .orElseThrow(() -> new RuntimeException("Campaign not found"));
+        
+        if (!campaign.getUserId().equals(userId)) {
+            throw new RuntimeException("Unauthorized");
+        }
+        
+        // Parse start date (expected to be in ISO format with UTC timezone)
+        if (settings.containsKey("startDate") && settings.get("startDate") != null) {
+            String startDateStr = settings.get("startDate").toString();
+            if (!startDateStr.trim().isEmpty()) {
+                try {
+                    // Parse ISO format with timezone (e.g., "2024-01-15T14:00:00.000Z" or "2024-01-15T14:00:00Z")
+                    // Frontend sends UTC time, so we parse it and store as LocalDateTime (treating it as UTC)
+                    LocalDateTime startAt = null;
+                    
+                    // Parse ISO 8601 format with timezone
+                    if (startDateStr.contains("T")) {
+                        // Parse as ZonedDateTime to handle timezone, then convert to UTC LocalDateTime
+                        try {
+                            ZonedDateTime zonedDateTime = ZonedDateTime.parse(startDateStr);
+                            // Convert to UTC LocalDateTime for storage
+                            startAt = zonedDateTime.withZoneSameInstant(ZoneId.of("UTC")).toLocalDateTime();
+                            System.out.println("SCHEDULE CAMPAIGN - Parsed ISO date: " + startDateStr + " -> UTC: " + startAt);
+                        } catch (Exception e1) {
+                            // Try parsing as Instant (ends with Z)
+                            try {
+                                java.time.Instant instant = java.time.Instant.parse(startDateStr);
+                                startAt = instant.atZone(ZoneId.of("UTC")).toLocalDateTime();
+                                System.out.println("SCHEDULE CAMPAIGN - Parsed Instant: " + startDateStr + " -> UTC: " + startAt);
+                            } catch (Exception e2) {
+                                // Fallback: parse as LocalDateTime (assume UTC if no timezone)
+                                String cleaned = startDateStr.replace("Z", "").trim();
+                                if (cleaned.endsWith("+00:00") || cleaned.endsWith("-00:00")) {
+                                    cleaned = cleaned.substring(0, cleaned.length() - 6);
+                                }
+                                // Remove timezone offset if present (e.g., +05:00, -05:00)
+                                if (cleaned.matches(".*[+-]\\d{2}:\\d{2}$")) {
+                                    cleaned = cleaned.substring(0, cleaned.length() - 6);
+                                }
+                                
+                                try {
+                                    startAt = LocalDateTime.parse(cleaned);
+                                    System.out.println("SCHEDULE CAMPAIGN - Parsed LocalDateTime (assumed UTC): " + cleaned + " -> " + startAt);
+                                } catch (Exception e3) {
+                                    // Try with seconds
+                                    try {
+                                        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
+                                        startAt = LocalDateTime.parse(cleaned, formatter);
+                                    } catch (Exception e4) {
+                                        // Try with milliseconds
+                                        DateTimeFormatter formatter2 = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS");
+                                        startAt = LocalDateTime.parse(cleaned, formatter2);
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // No time component, assume start of day in UTC
+                        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+                        startAt = LocalDateTime.parse(startDateStr, formatter);
+                        System.out.println("SCHEDULE CAMPAIGN - Parsed date only (assumed UTC midnight): " + startDateStr + " -> " + startAt);
+                    }
+                    
+                    if (startAt != null) {
+                        campaign.setStartAt(startAt);
+                        System.out.println("SCHEDULE CAMPAIGN - Set start_at to UTC: " + startAt);
+                        // Also log in EST for reference
+                        ZonedDateTime estTime = startAt.atZone(ZoneId.of("UTC")).withZoneSameInstant(ZoneId.of("America/New_York"));
+                        System.out.println("SCHEDULE CAMPAIGN - Which is EST/EDT: " + estTime.toLocalDateTime());
+                    }
+                } catch (Exception e) {
+                    System.err.println("SCHEDULE CAMPAIGN - Error parsing start date: " + startDateStr + " - " + e.getMessage());
+                    e.printStackTrace();
+                    // Don't throw - just log and continue without start date
+                }
+            }
+        }
+        
+        // Parse and save email delay (minimum 5 minutes)
+        if (settings.containsKey("emailDelayMinutes")) {
+            try {
+                Object delayObj = settings.get("emailDelayMinutes");
+                Integer delayMinutes = null;
+                
+                if (delayObj instanceof Integer) {
+                    delayMinutes = (Integer) delayObj;
+                } else if (delayObj instanceof String) {
+                    delayMinutes = Integer.parseInt((String) delayObj);
+                } else if (delayObj instanceof Number) {
+                    delayMinutes = ((Number) delayObj).intValue();
+                }
+                
+                // Enforce minimum of 5 minutes
+                if (delayMinutes != null && delayMinutes >= 5) {
+                    campaign.setEmailDelayMinutes(delayMinutes);
+                    System.out.println("SCHEDULE CAMPAIGN - Set email_delay_minutes to: " + delayMinutes);
+                } else if (delayMinutes != null && delayMinutes < 5) {
+                    System.out.println("SCHEDULE CAMPAIGN - Email delay " + delayMinutes + " is below minimum, setting to 5 minutes");
+                    campaign.setEmailDelayMinutes(5);
+                } else {
+                    // Default to 5 minutes if not provided or invalid
+                    campaign.setEmailDelayMinutes(5);
+                }
+            } catch (Exception e) {
+                System.err.println("SCHEDULE CAMPAIGN - Error parsing emailDelayMinutes: " + e.getMessage());
+                // Default to 5 minutes on error
+                campaign.setEmailDelayMinutes(5);
+            }
+        } else {
+            // Default to 5 minutes if not provided
+            if (campaign.getEmailDelayMinutes() == null) {
+                campaign.setEmailDelayMinutes(5);
+            }
+        }
+        
+        // Save selected mailboxes
+        if (settings.containsKey("selectedMailboxIds")) {
+            Object mailboxIdsObj = settings.get("selectedMailboxIds");
+            List<Integer> mailboxIds = new ArrayList<>();
+            
+            if (mailboxIdsObj instanceof List) {
+                for (Object id : (List<?>) mailboxIdsObj) {
+                    if (id instanceof Integer) {
+                        mailboxIds.add((Integer) id);
+                    } else if (id instanceof String) {
+                        try {
+                            mailboxIds.add(Integer.parseInt((String) id));
+                        } catch (NumberFormatException e) {
+                            System.err.println("SCHEDULE CAMPAIGN - Invalid mailbox ID: " + id);
+                        }
+                    }
+                }
+            }
+            
+            // Remove existing campaign-mailbox relationships
+            campaignMailboxRepository.deleteByCampaignId(campaignId);
+            
+            // Create new relationships
+            for (Integer mailboxId : mailboxIds) {
+                CampaignMailboxEntity cm = new CampaignMailboxEntity(campaignId, mailboxId, 0, 1);
+                campaignMailboxRepository.save(cm);
+                System.out.println("SCHEDULE CAMPAIGN - Linked mailbox " + mailboxId + " to campaign " + campaignId);
+            }
+        }
+        
+        // Set status to scheduled if start date is in the future, or running if it's now/past
+        if (campaign.getStartAt() != null) {
+            if (campaign.getStartAt().isAfter(LocalDateTime.now())) {
+                campaign.setStatus("scheduled");
+            } else {
+                campaign.setStatus("running");
+            }
+        } else {
+            campaign.setStatus("draft");
+        }
+        
+        campaignRepository.save(campaign);
+        System.out.println("SCHEDULE CAMPAIGN - Campaign " + campaignId + " scheduled successfully");
     }
 }
 

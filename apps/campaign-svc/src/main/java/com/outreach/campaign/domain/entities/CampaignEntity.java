@@ -47,7 +47,9 @@ public class CampaignEntity {
 
     @Column(name = "email_body", columnDefinition = "TEXT")
     private String emailBody;
-
+    
+    @Column(name = "email_delay_minutes")
+    private Integer emailDelayMinutes; // Delay in minutes between emails (minimum 5)
 
     // Getters and setters
     public Integer getId() { return id; }
@@ -88,6 +90,9 @@ public class CampaignEntity {
 
     public String getEmailBody() { return emailBody; }
     public void setEmailBody(String emailBody) { this.emailBody = emailBody; }
+    
+    public Integer getEmailDelayMinutes() { return emailDelayMinutes; }
+    public void setEmailDelayMinutes(Integer emailDelayMinutes) { this.emailDelayMinutes = emailDelayMinutes; }
 
 }
 

@@ -1,12 +1,12 @@
 package com.outreach.campaign.api;
 
-import com.outreach.campaign.application.CampaignLeadService;
-import com.outreach.campaign.application.CampaignService;
-import com.outreach.campaign.application.CsvParseResult;
-import com.outreach.campaign.application.CsvParserService;
-import com.outreach.campaign.application.EmailRenderService;
-import com.outreach.campaign.application.LeadImportService;
-import com.outreach.campaign.application.UserContextService;
+import com.outreach.campaign.application.campaign.CampaignService;
+import com.outreach.campaign.application.csv.CsvParseResult;
+import com.outreach.campaign.application.csv.CsvParserService;
+import com.outreach.campaign.application.csv.LeadImportService;
+import com.outreach.campaign.application.lead.CampaignLeadService;
+import com.outreach.campaign.application.rendering.EmailRenderService;
+import com.outreach.campaign.application.common.UserContextService;
 import com.outreach.campaign.domain.entities.LeadEntity;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.outreach.campaign.domain.models.Campaign;
@@ -201,15 +201,32 @@ public class CampaignController {
             @PathVariable Integer campaignId,
             @RequestHeader(value = "X-User-Email", required = false) String userEmail) {
         try {
-            // Resolve user ID
-            Integer userId = userContextService.getUserIdFromEmail(userEmail);
+            System.out.println("GET CAMPAIGN CONTACTS - Starting for campaign ID: " + campaignId);
             
-            // Get leads for this user (we can filter by campaign later using campaign_leads table)
-            List<LeadEntity> leads = leadRepository.findByUserId(userId);
+            // Resolve user ID (for verification, but not used in filtering)
+            Integer userId = userContextService.getUserIdFromEmail(userEmail);
+            if (userId == null) {
+                System.err.println("GET CAMPAIGN CONTACTS - User not found for email: " + userEmail);
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "User not found"));
+            }
+            
+            // Get leads for this campaign (filtered by campaign_leads table)
+            System.out.println("GET CAMPAIGN CONTACTS - Calling campaignLeadService.getCampaignLeads(" + campaignId + ")");
+            List<LeadEntity> leads = campaignLeadService.getCampaignLeads(campaignId);
+            System.out.println("GET CAMPAIGN CONTACTS - Campaign ID: " + campaignId + ", Found " + (leads != null ? leads.size() : 0) + " leads");
+            
+            if (leads == null) {
+                leads = new ArrayList<>();
+            }
             
             // Convert to response format
             List<Map<String, Object>> enrichedContacts = new ArrayList<>();
             for (LeadEntity lead : leads) {
+                if (lead == null) {
+                    System.err.println("GET CAMPAIGN CONTACTS - Warning: Null lead found, skipping");
+                    continue;
+                }
                 Map<String, Object> contactMap = new HashMap<>();
                 contactMap.put("contactId", lead.getId());
                 contactMap.put("leadId", lead.getId());
@@ -226,10 +243,19 @@ public class CampaignController {
                 enrichedContacts.add(contactMap);
             }
             
+            System.out.println("GET CAMPAIGN CONTACTS - Returning " + enrichedContacts.size() + " contacts");
             return ResponseEntity.ok(enrichedContacts);
         } catch (Exception e) {
+            System.err.println("GET CAMPAIGN CONTACTS - Error: " + e.getMessage());
+            System.err.println("GET CAMPAIGN CONTACTS - Error class: " + e.getClass().getName());
+            System.err.println("GET CAMPAIGN CONTACTS - Stack trace:");
+            e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(Map.of("error", "Failed to get contacts: " + e.getMessage()));
+                .body(Map.of(
+                    "error", "Failed to get contacts: " + e.getMessage(),
+                    "errorClass", e.getClass().getSimpleName(),
+                    "campaignId", campaignId
+                ));
         }
     }
     
@@ -514,6 +540,35 @@ public class CampaignController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of("error", "Failed to save email: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * Save campaign scheduling settings (start date, mailboxes, etc.)
+     */
+    @PutMapping("/campaigns/{id}/schedule")
+    public ResponseEntity<?> scheduleCampaign(
+            @PathVariable Integer id,
+            @RequestBody Map<String, Object> request,
+            @RequestHeader(value = "X-User-Email", required = false) String userEmail) {
+        try {
+            Integer userId = userContextService.getUserIdFromEmail(userEmail);
+            if (userId == null) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "User not found"));
+            }
+            
+            campaignService.scheduleCampaign(id, userId, request);
+            
+            return ResponseEntity.ok(Map.of(
+                "message", "Campaign scheduled successfully",
+                "campaignId", id
+            ));
+        } catch (Exception e) {
+            System.err.println("SCHEDULE CAMPAIGN - Error: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("error", "Failed to schedule campaign: " + e.getMessage()));
         }
     }
 }

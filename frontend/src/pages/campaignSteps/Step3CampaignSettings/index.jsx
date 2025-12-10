@@ -1,8 +1,9 @@
-import { Clock, Globe, Mail, Calendar } from "lucide-react";
+import { Clock, Globe, Mail, Calendar, Timer } from "lucide-react";
 import CampaignTiming from "./CampaignTiming";
 import TimezoneSettings from "./TimezoneSettings";
 import SendTimeSettings from "./SendTimeSettings";
 import MailboxSettings from "./MailboxSettings";
+import EmailDelaySettings from "./EmailDelaySettings";
 
 export default function Step3CampaignSettings({
   campaignSettings,
@@ -56,6 +57,20 @@ export default function Step3CampaignSettings({
           </h4>
         </div>
         <SendTimeSettings
+          campaignSettings={campaignSettings}
+          setCampaignSettings={setCampaignSettings}
+        />
+      </div>
+
+      {/* Email Delay Settings Section */}
+      <div className="border border-gray-200 rounded-lg p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Timer className="text-blue-600" size={20} />
+          <h4 className="text-base font-semibold text-gray-800">
+            Email Sending Rate
+          </h4>
+        </div>
+        <EmailDelaySettings
           campaignSettings={campaignSettings}
           setCampaignSettings={setCampaignSettings}
         />

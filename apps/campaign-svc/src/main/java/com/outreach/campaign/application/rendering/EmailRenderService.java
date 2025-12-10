@@ -1,4 +1,4 @@
-package com.outreach.campaign.application;
+package com.outreach.campaign.application.rendering;
 
 import com.outreach.campaign.domain.entities.LeadEntity;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -210,6 +210,21 @@ public class EmailRenderService {
      */
     public String renderEmail(String template, LeadEntity lead, java.util.List<String> csvColumns) {
         return renderEmail(template, lead, csvColumns, System.currentTimeMillis());
+    }
+    
+    /**
+     * Parse CSV columns JSON string to List
+     */
+    public List<String> parseCsvColumns(String csvColumnsJson) {
+        if (csvColumnsJson == null || csvColumnsJson.trim().isEmpty()) {
+            return new ArrayList<>();
+        }
+        try {
+            return objectMapper.readValue(csvColumnsJson, new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {});
+        } catch (Exception e) {
+            System.err.println("Error parsing CSV columns JSON: " + e.getMessage());
+            return new ArrayList<>();
+        }
     }
     
     /**

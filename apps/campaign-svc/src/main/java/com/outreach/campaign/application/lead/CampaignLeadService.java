@@ -1,4 +1,4 @@
-package com.outreach.campaign.application;
+package com.outreach.campaign.application.lead;
 
 import com.outreach.campaign.domain.entities.CampaignLeadEntity;
 import com.outreach.campaign.domain.entities.LeadEntity;
@@ -140,11 +140,34 @@ public class CampaignLeadService {
      * @return List of LeadEntity
      */
     public List<LeadEntity> getCampaignLeads(Integer campaignId) {
-        List<CampaignLeadEntity> campaignLeads = campaignLeadRepository.findByCampaignId(campaignId);
-        return campaignLeads.stream()
-            .map(cl -> leadRepository.findById(cl.getLeadId()).orElse(null))
-            .filter(lead -> lead != null)
-            .toList();
+        System.out.println("getCampaignLeads - Campaign ID: " + campaignId);
+        try {
+            List<CampaignLeadEntity> campaignLeads = campaignLeadRepository.findByCampaignId(campaignId);
+            System.out.println("getCampaignLeads - Found " + campaignLeads.size() + " campaign_lead entries");
+            
+            List<LeadEntity> leads = new ArrayList<>();
+            for (CampaignLeadEntity cl : campaignLeads) {
+                try {
+                    LeadEntity lead = leadRepository.findById(cl.getLeadId()).orElse(null);
+                    if (lead != null) {
+                        leads.add(lead);
+                        System.out.println("getCampaignLeads - Added lead ID: " + lead.getId() + ", email: " + lead.getEmail());
+                    } else {
+                        System.err.println("getCampaignLeads - Lead ID " + cl.getLeadId() + " not found in leads table");
+                    }
+                } catch (Exception e) {
+                    System.err.println("getCampaignLeads - Error fetching lead ID " + cl.getLeadId() + ": " + e.getMessage());
+                    e.printStackTrace();
+                }
+            }
+            
+            System.out.println("getCampaignLeads - Returning " + leads.size() + " leads");
+            return leads;
+        } catch (Exception e) {
+            System.err.println("getCampaignLeads - Error: " + e.getMessage());
+            e.printStackTrace();
+            throw e;
+        }
     }
     
     /**

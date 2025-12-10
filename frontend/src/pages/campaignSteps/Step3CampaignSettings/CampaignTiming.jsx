@@ -11,7 +11,7 @@ export default function CampaignTiming({
     <div className="space-y-4">
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          Campaign Start Date
+          Campaign Start Date <span className="text-xs text-gray-500">(EST/EDT)</span>
         </label>
         <input
           type="date"
