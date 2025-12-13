@@ -191,9 +191,22 @@ See [db/schema.sql](db/schema.sql) for the complete database schema including:
 
 ## Kubernetes Deployment
 
-For production deployment on GKE, see the [Kubernetes Configuration Guide](infra/k8s/README.md).
+### Quick Deploy (Local K8s)
+
+For teammates running this for the first time:
+
+1.  Make sure Docker Desktop is running and Kubernetes is enabled.
+2.  Run the automated setup script:
+
+    ```bash
+    ./infra/k8s/quickstart.sh
+    ```
+
+3.  Access the app at **[http://localhost](http://localhost)**.
 
 ### Quick Deploy to Kubernetes
+
+For production deployment on GKE, see the [Kubernetes Configuration Guide](infra/k8s/README.md).
 
 1. **Create namespace and apply ConfigMap/Secrets**
    ```bash
