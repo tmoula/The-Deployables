@@ -189,7 +189,41 @@ See [db/schema.sql](db/schema.sql) for the complete database schema including:
 - Campaign management and sequences
 - Email sending and event tracking
 
+## Kubernetes Deployment
+
+For production deployment on GKE, see the [Kubernetes Configuration Guide](infra/k8s/README.md).
+
+### Quick Deploy to Kubernetes
+
+1. **Create namespace and apply ConfigMap/Secrets**
+   ```bash
+   kubectl apply -f infra/k8s/namespace.yaml
+   kubectl apply -f infra/k8s/configmap.yaml
+   
+   # Create secrets (see infra/k8s/README.md for details)
+   kubectl apply -f infra/k8s/secrets.yaml
+   kubectl apply -f gke-harbor-secret.yaml -n deps-lead-svc
+   ```
+
+2. **Deploy services**
+   ```bash
+   cd infra/k8s
+   kubectl apply -f postgres-deploy-k8s.yaml
+   kubectl apply -f auth-svc-deploy-k8s.yaml
+   kubectl apply -f lead-deploy-k8s.yaml
+   kubectl apply -f frontend-deploy-k8s.yaml
+   ```
+
+3. **Verify deployment**
+   ```bash
+   kubectl get pods -n deps-lead-svc
+   kubectl get svc -n deps-lead-svc
+   ```
+
+**Note**: All environment variables are managed via ConfigMaps (non-sensitive) and Secrets (sensitive). No credentials are hardcoded in deployment files.
+
 ## Project Status
+
 
 ### Planned
 - ✅ Add the readme
@@ -206,7 +240,6 @@ See [db/schema.sql](db/schema.sql) for the complete database schema including:
 - ⬜ Deploy K8s manifests to GKE cluster
 - ⬜ Integration test on GKE - ensuring emails are sent
 - ⬜ Use GitHub Secrets and K8s Secrets - No secrets in the repo
-- ⬜ Use K8s ConfigMaps for non-secret environment variables
 - ⬜ 80% unit test coverage
 
 ### In Progress
@@ -223,6 +256,7 @@ See [db/schema.sql](db/schema.sql) for the complete database schema including:
 - ✅ Postgres hookups
 - ✅ RabbitMQ integration
 - ✅ AI integration
+- ✅ Use K8s ConfigMaps for non-secret environment variables
 
 ### Maybe Later
 - Helm chart for deployment

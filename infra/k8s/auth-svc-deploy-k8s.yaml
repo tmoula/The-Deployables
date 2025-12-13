@@ -13,25 +13,55 @@ spec:
       labels:
         app: auth-svc
     spec:
+      imagePullSecrets:
+      - name: harbor-registry-secret
       containers:
       - name: auth-svc
-        image: harbor.javajon.duckdns.org/deps/auth-svc:v1
-        imagePullPolicy: IfNotPresent
+        image: harbor.javajon-gke.duckdns.org/library/auth-svc:v2
+        imagePullPolicy: Always
         ports:
         - containerPort: 8083
         env:
-        - name: DB_HOST
-          value: postgres-service  # Kubernetes service name
-        - name: DB_PORT
-          value: "5432"
-        - name: DB_NAME
-          value: outreachdb
-        - name: DB_USER
-          value: postgres
-        - name: DB_PASSWORD
-          value: postgres
+        # Database Configuration from ConfigMap
+        - name: SPRING_DATASOURCE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: outreach-config
+              key: SPRING_DATASOURCE_URL
+        # Database Credentials from Secret
+        - name: SPRING_DATASOURCE_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: outreach-secrets
+              key: SPRING_DATASOURCE_USERNAME
+        - name: SPRING_DATASOURCE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: outreach-secrets
+              key: SPRING_DATASOURCE_PASSWORD
+        # JWT Secret from Secret
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: outreach-secrets
+              key: JWT_SECRET
+        # Email Configuration from Secret
+        - name: MAIL_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: outreach-secrets
+              key: MAIL_USERNAME
+        - name: MAIL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: outreach-secrets
+              key: MAIL_PASSWORD
+        # Server Port from ConfigMap
         - name: SERVER_PORT
-          value: "8083"
+          valueFrom:
+            configMapKeyRef:
+              name: outreach-config
+              key: AUTH_SERVICE_PORT
 ---
 apiVersion: v1
 kind: Service

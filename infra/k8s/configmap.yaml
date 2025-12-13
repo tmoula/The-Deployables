@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: outreach-config
+  namespace: deps-lead-svc
+data:
+  # Database Configuration (non-sensitive)
+  DB_HOST: "postgres-service"
+  DB_PORT: "5432"
+  DB_NAME: "outreachdb"
+  
+  # RabbitMQ Configuration (non-sensitive)
+  RABBITMQ_HOST: "rabbitmq"
+  RABBITMQ_PORT: "5672"
+  RABBITMQ_VHOST: "/"
+  
+  # Queue Names
+  AI_REQUEST_QUEUE: "ai.email.generation.requests"
+  AI_RESPONSE_QUEUE: "ai.email.generation.responses"
+  AI_ERROR_QUEUE: "ai.email.generation.errors"
+  
+  # Service URLs
+  AI_SERVICE_URL: "http://ai-svc:8090"
+  LEAD_SERVICE_URL: "http://lead-svc:8081"
+  
+  # Service Ports
+  AUTH_SERVICE_PORT: "8083"
+  CAMPAIGN_SERVICE_PORT: "8081"
+  LEAD_SERVICE_PORT: "8081"
+  AI_SERVICE_PORT: "8090"
+  
+  # Spring/Database Connection String
+  SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres-service:5432/outreachdb"
+  
+  # OpenAI Configuration (non-sensitive)
+  OPENAI_MODEL: "gpt-4o-mini"
+  OPENAI_BASE_URL: ""
+  
+  # Gemini Configuration (non-sensitive)
+  GEMINI_API_URL: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+  
+  # Frontend API URLs
+  REACT_APP_AUTH_URL: "http://localhost:8083/api/v1/auth"
+  REACT_APP_API_URL: "http://localhost:8081/api/v1"

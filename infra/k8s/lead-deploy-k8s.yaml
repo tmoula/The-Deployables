@@ -13,12 +13,63 @@ spec:
       labels:
         app.kubernetes.io/name: LeadsApp
     spec:
+      imagePullSecrets:
+      - name: harbor-registry-secret
       containers:
       - name: lead-svc
-        image: harbor.javajon.duckdns.org/deps/lead-svc:v1
+        image: harbor.javajon-gke.duckdns.org/library/lead-svc:v1
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
         env:
+        # Database Configuration from ConfigMap
+        - name: SPRING_DATASOURCE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: outreach-config
+              key: SPRING_DATASOURCE_URL
+        # Database Credentials from Secret
+        - name: SPRING_DATASOURCE_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: outreach-secrets
+              key: SPRING_DATASOURCE_USERNAME
+        - name: SPRING_DATASOURCE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: outreach-secrets
+              key: SPRING_DATASOURCE_PASSWORD
+        # RabbitMQ Configuration from ConfigMap
+        - name: RABBITMQ_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: outreach-config
+              key: RABBITMQ_HOST
+        - name: RABBITMQ_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: outreach-config
+              key: RABBITMQ_PORT
+        # RabbitMQ Credentials from Secret
+        - name: RABBITMQ_USER
+          valueFrom:
+            secretKeyRef:
+              name: outreach-secrets
+              key: RABBITMQ_USER
+        - name: RABBITMQ_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: outreach-secrets
+              key: RABBITMQ_PASSWORD
+        # AI Service URL from ConfigMap
+        - name: AI_SERVICE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: outreach-config
+              key: AI_SERVICE_URL
+        # Server Port from ConfigMap
         - name: SERVER_PORT
-          value: "8080"
+          valueFrom:
+            configMapKeyRef:
+              name: outreach-config
+              key: LEAD_SERVICE_PORT

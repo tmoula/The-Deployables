@@ -13,9 +13,23 @@ spec:
       labels:
         app: outreach-ui
     spec:
+      imagePullSecrets:
+      - name: harbor-registry-secret
       containers:
       - name: outreach-ui
-        image: harbor.javajon.duckdns.org/deps/outreach-ui:v1
+        image: harbor.javajon-gke.duckdns.org/library/outreach-ui:v1
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80
+        env:
+        # Frontend API Configuration from ConfigMap
+        - name: REACT_APP_AUTH_URL
+          valueFrom:
+            configMapKeyRef:
+              name: outreach-config
+              key: REACT_APP_AUTH_URL
+        - name: REACT_APP_API_URL
+          valueFrom:
+            configMapKeyRef:
+              name: outreach-config
+              key: REACT_APP_API_URL

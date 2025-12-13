@@ -25,10 +25,7 @@ public class EmailService {
     private static final String ENCRYPTION_KEY = "change-this-encryption-key-prod";
     private static final String SALT = "deadbeef";
 
-    public EmailService(MailboxRepository mailboxRepository) {
-        this.mailboxRepository = mailboxRepository;
-        this.encryptor = Encryptors.text(ENCRYPTION_KEY, SALT);
-    }
+
 
     public List<EmailDto> fetchRecentEmails(Long userId) {
         List<Mailbox> mailboxes = mailboxRepository.findByUserId(userId);
@@ -111,10 +108,32 @@ public class EmailService {
     }
 
 
+    private final org.springframework.mail.javamail.JavaMailSender mailSender;
+    
+    @org.springframework.beans.factory.annotation.Value("${spring.mail.username}")
+    private String fromEmail;
+
+    public EmailService(MailboxRepository mailboxRepository, org.springframework.mail.javamail.JavaMailSender mailSender) {
+        this.mailboxRepository = mailboxRepository;
+        this.encryptor = Encryptors.text(ENCRYPTION_KEY, SALT);
+        this.mailSender = mailSender;
+    }
+
     public void sendVerificationEmail(String to, String code) {
-        // Simple implementation for now - in production use JavaMailSender
-        System.out.println("Sending verification email to " + to + " with code " + code);
-        // TODO: Implement actual sending logic using JavaMailSender if needed for this service
-        // For now, we rely on the console log in AuthService for local dev
+        try {
+            System.out.println("Sending verification email to " + to);
+            org.springframework.mail.SimpleMailMessage message = new org.springframework.mail.SimpleMailMessage();
+            message.setFrom(fromEmail);
+            message.setTo(to);
+            message.setSubject("Your Verification Code - The Deployables");
+            message.setText("Your verification code is: " + code + "\n\nThis code will expire in 15 minutes.");
+            
+            mailSender.send(message);
+            System.out.println("Verification email sent successfully to " + to);
+        } catch (Exception e) {
+            System.err.println("Failed to send email to " + to + ": " + e.getMessage());
+            e.printStackTrace();
+            // Don't rethrow to avoid breaking the registration flow, but log strictly
+        }
     }
 }
