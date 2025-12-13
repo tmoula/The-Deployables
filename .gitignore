@@ -45,6 +45,7 @@ gc.properties
 *.local
 secrets/
 *.key
+infra/k8s/secrets.yaml
 
 # ---- Logs ----
 logs/
