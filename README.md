@@ -248,7 +248,6 @@ For production deployment on GKE, see the [Kubernetes Configuration Guide](infra
 - ⬜ Figure out port-forward with RabbitMQ on GKE to connect local code to DB
 - ⬜ Pushing images to Harbor on GKE
 - ⬜ Secret for Harbor image container pulls
-- ⬜ Add ingress to access user interface
 - ⬜ Add namespace(s) to GKE cluster
 - ⬜ Deploy K8s manifests to GKE cluster
 - ⬜ Integration test on GKE - ensuring emails are sent
@@ -270,6 +269,7 @@ For production deployment on GKE, see the [Kubernetes Configuration Guide](infra
 - ✅ RabbitMQ integration
 - ✅ AI integration
 - ✅ Use K8s ConfigMaps for non-secret environment variables
+- ✅ Add ingress to access user interface
 
 ### Maybe Later
 - Helm chart for deployment
