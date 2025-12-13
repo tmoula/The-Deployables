@@ -1,0 +1,121 @@
+name: CI - Build and Push to Harbor
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/**'
+      - 'frontend/**'
+      - '**/Dockerfile'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    branches:
+      - main
+
+env:
+  HARBOR_REGISTRY: harbor.javajon.duckdns.org
+  HARBOR_PROJECT: deps
+  DOCKER_BUILDKIT: 1
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Log in to Harbor
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.HARBOR_REGISTRY }}
+          username: ${{ secrets.HARBOR_USERNAME }}
+          password: ${{ secrets.HARBOR_PASSWORD }}
+      
+      - name: Get commit SHA
+        id: commit
+        run: echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+      
+      - name: Build and push auth-svc
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/auth-svc
+          file: ./apps/auth-svc/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/auth-svc:${{ steps.commit.outputs.sha }}
+            ${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/auth-svc:latest
+          cache-from: type=registry,ref=${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/auth-svc:buildcache
+          cache-to: type=registry,ref=${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/auth-svc:buildcache,mode=max
+      
+      - name: Build and push campaign-svc
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/campaign-svc
+          file: ./apps/campaign-svc/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/campaign-svc:${{ steps.commit.outputs.sha }}
+            ${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/campaign-svc:latest
+          cache-from: type=registry,ref=${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/campaign-svc:buildcache
+          cache-to: type=registry,ref=${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/campaign-svc:buildcache,mode=max
+      
+      - name: Build and push lead-svc
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/lead-svc
+          file: ./apps/lead-svc/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/lead-svc:${{ steps.commit.outputs.sha }}
+            ${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/lead-svc:latest
+          cache-from: type=registry,ref=${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/lead-svc:buildcache
+          cache-to: type=registry,ref=${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/lead-svc:buildcache,mode=max
+      
+      - name: Build and push ai-svc
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/AI-svc
+          file: ./apps/AI-svc/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/ai-svc:${{ steps.commit.outputs.sha }}
+            ${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/ai-svc:latest
+          cache-from: type=registry,ref=${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/ai-svc:buildcache
+          cache-to: type=registry,ref=${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/ai-svc:buildcache,mode=max
+      
+      - name: Build and push frontend (outreach-ui)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/outreach-ui:${{ steps.commit.outputs.sha }}
+            ${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/outreach-ui:latest
+          build-args: |
+            REACT_APP_AUTH_URL=${{ secrets.REACT_APP_AUTH_URL || 'http://localhost:8083/api/v1/auth' }}
+            REACT_APP_API_URL=${{ secrets.REACT_APP_API_URL || 'http://localhost:8081/api/v1' }}
+          cache-from: type=registry,ref=${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/outreach-ui:buildcache
+          cache-to: type=registry,ref=${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/outreach-ui:buildcache,mode=max
+      
+      - name: Build summary
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "## 🐳 Container Images Built and Pushed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All container images have been successfully built and pushed to Harbor:" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/auth-svc:${{ steps.commit.outputs.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/campaign-svc:${{ steps.commit.outputs.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/lead-svc:${{ steps.commit.outputs.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/ai-svc:${{ steps.commit.outputs.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/outreach-ui:${{ steps.commit.outputs.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All images are also tagged as \`latest\`." >> $GITHUB_STEP_SUMMARY
