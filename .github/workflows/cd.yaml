@@ -7,7 +7,7 @@ on:
 
 env:
   HARBOR_REGISTRY: "harbor.javajon-gke.duckdns.org"
-  HARBOR_PROJECT: "deps"
+  HARBOR_PROJECT: "library"
   GKE_CLUSTER: "deps-lead-svc-cluster" # Replace with your actual cluster name if different
   GKE_ZONE: "us-central1-c"            # Replace with your actual zone
   GKE_NAMESPACE: "deps-lead-svc"

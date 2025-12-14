@@ -15,7 +15,7 @@ on:
 
 env:
   HARBOR_REGISTRY: harbor.javajon-gke.duckdns.org
-  HARBOR_PROJECT: deps
+  HARBOR_PROJECT: library
   DOCKER_BUILDKIT: 1
 
 jobs:
