@@ -244,9 +244,7 @@ For production deployment on GKE, see the [Kubernetes Configuration Guide](infra
 - ⬜ Add to readme AI citation(s)
 - ⬜ Update readme with this task list
 - ⬜ Update readme database instructions
-- ⬜ Secret for Harbor image container pulls
 - ⬜ Integration test on GKE - ensuring emails are sent
-- ⬜ Use GitHub Secrets and K8s Secrets - No secrets in the repo
 
 ### In Progress
 - CI builds and pushes all container images to Harbor on GKE (EC)
@@ -265,9 +263,11 @@ For production deployment on GKE, see the [Kubernetes Configuration Guide](infra
 - ✅ AI integration
 - ✅ Use K8s ConfigMaps for non-secret environment variables
 - ✅ Add ingress to access user interface
+- ⬜ Secret for Harbor image container pulls
 - - ⬜ Figure out port-forward with Postgres on GKE to connect local code to DB (DS)
 - ⬜ Figure out port-forward with RabbitMQ on GKE to connect local code to DB (DS)
 - ⬜ Add namespace(s) to GKE cluster
+- - ⬜ Use GitHub Secrets and K8s Secrets - No secrets in the repo
 - ⬜ Deploy K8s manifests to GKE cluster
   -  ⬜ Pushing images to Harbor on GKE
  -  
