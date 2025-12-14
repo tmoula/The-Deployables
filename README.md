@@ -244,8 +244,6 @@ For production deployment on GKE, see the [Kubernetes Configuration Guide](infra
 - ⬜ Add to readme AI citation(s)
 - ⬜ Update readme with this task list
 - ⬜ Update readme database instructions
-- ⬜ Figure out port-forward with Postgres on GKE to connect local code to DB
-- ⬜ Figure out port-forward with RabbitMQ on GKE to connect local code to DB
 - ⬜ Pushing images to Harbor on GKE
 - ⬜ Secret for Harbor image container pulls
 - ⬜ Add namespace(s) to GKE cluster
@@ -270,6 +268,8 @@ For production deployment on GKE, see the [Kubernetes Configuration Guide](infra
 - ✅ AI integration
 - ✅ Use K8s ConfigMaps for non-secret environment variables
 - ✅ Add ingress to access user interface
+- - ⬜ Figure out port-forward with Postgres on GKE to connect local code to DB (DS)
+- ⬜ Figure out port-forward with RabbitMQ on GKE to connect local code to DB (DS)
 
 ### Maybe Later
 - Helm chart for deployment
