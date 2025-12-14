@@ -42,3 +42,8 @@ data:
   # Frontend API URLs
   REACT_APP_AUTH_URL: "http://localhost:8083/api/v1/auth"
   REACT_APP_API_URL: "http://localhost:8081/api/v1"
+  
+  # Public API Configuration (enable and configure in secrets)
+  PUBLIC_API_ENABLED: "false"
+  PUBLIC_API_BASE_URL: ""
+  PUBLIC_API_TIMEOUT: "10000"
