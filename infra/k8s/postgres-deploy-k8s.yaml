@@ -46,6 +46,8 @@ spec:
             configMapKeyRef:
               name: outreach-config
               key: DB_NAME
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
         volumeMounts:
         - name: postgres-storage
           mountPath: /var/lib/postgresql/data

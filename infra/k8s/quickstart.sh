@@ -23,8 +23,13 @@ kubectl apply -f infra/k8s/namespace.yaml
 kubectl apply -f infra/k8s/configmap.yaml
 # Note: In a real team, secrets shouldn't be in the repo. 
 # For this class project, ensure secrets.yaml exists or create dummy ones.
-if [ -f "infra/k8s/secrets.yaml" ]; then
+if [ -f "$HOME/Downloads/gke-harbor-secret.yaml" ]; then
+    echo "🔑 Found GKE Harbor Secret in Downloads! Applying..."
+    # We rename the secret to match our deployments (harbor-registry-secret) and enforce namespace
+    cat "$HOME/Downloads/gke-harbor-secret.yaml" | sed 's/name: gke-harbor-pull-secret/name: harbor-registry-secret/' | sed 's/namespace: default/namespace: deps-lead-svc/' | kubectl apply -f -
+elif [ -f "infra/k8s/secrets.yaml" ]; then
     kubectl apply -f infra/k8s/secrets.yaml
+    # If we are local, ensuring harbor-registry-secret exists (might have been created manually)
 else
     echo "⚠️ infra/k8s/secrets.yaml not found! Creating from example..."
     cp infra/k8s/secrets.yaml.example infra/k8s/secrets.yaml
@@ -35,6 +40,7 @@ fi
 # 4. Apply Deployments & Services
 echo "🚀 Deploying Microservices..."
 kubectl apply -f infra/k8s/postgres-deploy-k8s.yaml
+kubectl apply -f infra/k8s/rabbitmq-deploy-k8s.yaml
 kubectl apply -f infra/k8s/auth-svc-deploy-k8s.yaml
 kubectl apply -f infra/k8s/lead-deploy-k8s.yaml
 kubectl apply -f infra/k8s/lead-svc-k8s.yaml

@@ -1,8 +1,7 @@
-// Base URLs for different services
 // Campaign Service (campaign-svc) - port 8081
-const CAMPAIGN_BASE_URL = process.env.REACT_APP_CAMPAIGN_API_URL || 'http://localhost:8081/api/v1';
+const CAMPAIGN_BASE_URL = process.env.REACT_APP_CAMPAIGN_API_URL || '/api/v1/campaigns';
 // Lead Service (lead-svc) - port 8084
-const LEAD_BASE_URL = process.env.REACT_APP_LEAD_API_URL || 'http://localhost:8084/api/v1';
+const LEAD_BASE_URL = process.env.REACT_APP_LEAD_API_URL || '/api/v1';
 
 // Debug: Log the API URLs being used (check browser console)
 if (process.env.NODE_ENV === 'development') {
@@ -119,13 +118,13 @@ export const api = {
   async matchProspects(criteria, limit = 5) {
     try {
       const headers = { 'Content-Type': 'application/json' };
-      
+
       // Add user email header if available
       const userEmail = this.getUserEmail();
       if (userEmail) {
         headers['X-User-Email'] = userEmail;
       }
-      
+
       const response = await fetch(`${LEAD_BASE_URL}/match?limit=${limit}`, {
         method: 'POST',
         headers: headers,
@@ -152,7 +151,7 @@ export const api = {
       if (userEmail) {
         headers['X-User-Email'] = userEmail;
       }
-      
+
       const response = await fetch(`${LEAD_BASE_URL}/lead-batches/${batchId}`, {
         method: 'GET',
         headers: headers
@@ -178,7 +177,7 @@ export const api = {
       if (userEmail) {
         headers['X-User-Email'] = userEmail;
       }
-      
+
       const response = await fetch(`${LEAD_BASE_URL}/lead-batches/${batchId}/leads`, {
         method: 'GET',
         headers: headers
