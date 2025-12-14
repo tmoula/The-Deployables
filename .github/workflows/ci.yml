@@ -14,7 +14,7 @@ on:
       - main
 
 env:
-  HARBOR_REGISTRY: harbor.javajon.duckdns.org
+  HARBOR_REGISTRY: harbor.javajon-gke.duckdns.org
   HARBOR_PROJECT: deps
   DOCKER_BUILDKIT: 1
 

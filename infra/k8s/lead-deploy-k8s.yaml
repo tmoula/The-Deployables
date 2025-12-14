@@ -17,7 +17,7 @@ spec:
       - name: harbor-registry-secret
       containers:
       - name: lead-svc
-        image: harbor.javajon-gke.duckdns.org/library/lead-svc:v1
+        image: harbor.javajon-gke.duckdns.org/deps/lead-svc:v1
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080

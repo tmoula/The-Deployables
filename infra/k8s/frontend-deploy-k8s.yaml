@@ -17,7 +17,7 @@ spec:
       - name: harbor-registry-secret
       containers:
       - name: outreach-ui
-        image: harbor.javajon-gke.duckdns.org/library/outreach-ui:v3
+        image: harbor.javajon-gke.duckdns.org/deps/outreach-ui:v3
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80

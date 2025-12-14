@@ -17,7 +17,7 @@ spec:
       - name: harbor-registry-secret
       containers:
       - name: auth-svc
-        image: harbor.javajon-gke.duckdns.org/library/auth-svc:v2
+        image: harbor.javajon-gke.duckdns.org/deps/auth-svc:v2
         imagePullPolicy: Always
         ports:
         - containerPort: 8083
