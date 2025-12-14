@@ -244,19 +244,16 @@ For production deployment on GKE, see the [Kubernetes Configuration Guide](infra
 - ⬜ Add to readme AI citation(s)
 - ⬜ Update readme with this task list
 - ⬜ Update readme database instructions
-- ⬜ Pushing images to Harbor on GKE
 - ⬜ Secret for Harbor image container pulls
-- ⬜ Add namespace(s) to GKE cluster
-- ⬜ Deploy K8s manifests to GKE cluster
 - ⬜ Integration test on GKE - ensuring emails are sent
 - ⬜ Use GitHub Secrets and K8s Secrets - No secrets in the repo
-- ⬜ 80% unit test coverage
 
 ### In Progress
 - CI builds and pushes all container images to Harbor on GKE (EC)
 - Obtain data from a public API (EC)
 - CD pulls all container images from Harbor as well as all YAMLS on GKE (EC)
 - Bug with emails (TM)
+- - ⬜ 80% unit test coverage (EC)
 - Can't connect to Postgres using psql - why? (JJ)
 
 ### Completed
@@ -270,7 +267,10 @@ For production deployment on GKE, see the [Kubernetes Configuration Guide](infra
 - ✅ Add ingress to access user interface
 - - ⬜ Figure out port-forward with Postgres on GKE to connect local code to DB (DS)
 - ⬜ Figure out port-forward with RabbitMQ on GKE to connect local code to DB (DS)
-
+- ⬜ Add namespace(s) to GKE cluster
+- ⬜ Deploy K8s manifests to GKE cluster
+  -  ⬜ Pushing images to Harbor on GKE
+ -  
 ### Maybe Later
 - Helm chart for deployment
 
