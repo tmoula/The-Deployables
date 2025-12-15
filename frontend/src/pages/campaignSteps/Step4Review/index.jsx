@@ -47,27 +47,28 @@ export default function Step4Review({
     }
   }, [campaignContacts, campaignId]);
 
-  const loadPreview = async (index) => {
-    if (!campaignId || !emailSubject || !emailContent || index >= campaignContacts.length) return;
+  const loadPreview = async (index, forceRefresh = false) => {
+    if (!campaignId || !emailSubject || !emailContent || index < 0 || index >= campaignContacts.length) return;
     
     const contact = campaignContacts[index];
     if (!contact) return;
 
     // Get contact ID from various possible fields
-    const contactId = contact.contactId || contact.id || contact.leadId || contact.lead_id;
-    if (!contactId) {
+    const contactId = contact.contactId || contact.id || contact.leadId || contact.lead_id || index;
+    if (!contactId && contactId !== 0) {
       console.error("Contact has no ID:", contact);
       return;
     }
 
-    // Use cached preview if available
-    if (contactPreviews[contactId]) {
+    // Use cached preview if available (unless forcing refresh)
+    if (!forceRefresh && contactPreviews[contactId]) {
       setPreviewData(contactPreviews[contactId]);
       return;
     }
 
     setLoadingPreview(true);
     try {
+      // Use current timestamp as seed - each refresh gets a different seed for new spintax variations
       const seed = Date.now();
       const preview = await campaignApi.previewEmail(
         campaignId,
@@ -77,6 +78,7 @@ export default function Step4Review({
         seed
       );
       setPreviewData(preview);
+      // Cache the preview (will be overwritten on next refresh with same contact)
       setContactPreviews(prev => ({
         ...prev,
         [contactId]: preview
@@ -111,11 +113,17 @@ export default function Step4Review({
   };
 
   const refreshPreview = () => {
-    if (campaignContacts[selectedContactIndex]) {
-      const contact = campaignContacts[selectedContactIndex];
-      delete contactPreviews[contact.contactId];
-      loadPreview(selectedContactIndex);
-    }
+    if (campaignContacts.length === 0) return;
+    
+    // Pick a random contact to show variety (rotates among rows)
+    // This ensures different spintax variations and different contact data each time
+    const randomIndex = Math.floor(Math.random() * campaignContacts.length);
+    
+    // Update selected index to highlight the random contact
+    setSelectedContactIndex(randomIndex);
+    
+    // Force refresh with new spintax seed (Date.now() will be different each call)
+    loadPreview(randomIndex, true);
   };
 
   const formatDelay = (minutes) => {
@@ -212,10 +220,11 @@ export default function Step4Review({
               </h3>
               <button
                 onClick={refreshPreview}
-                className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md flex items-center gap-1 transition-colors"
+                title="Refresh preview with random contact and new spintax variation"
               >
                 <RefreshCw size={14} />
-                Refresh
+                Refresh Preview
               </button>
             </div>
             <p className="text-xs text-gray-600 mt-1">
@@ -306,16 +315,28 @@ export default function Step4Review({
         {/* Right: Email Preview */}
         <div className="bg-white border border-gray-200 rounded-lg overflow-hidden flex flex-col" style={{ height: '600px' }}>
           <div className="p-4 border-b border-gray-200 bg-gray-50">
-            <h3 className="font-semibold text-gray-800 flex items-center gap-2">
-              <Mail size={18} />
-              Email Preview
-            </h3>
-            {previewData?.lead && (
-              <p className="text-xs text-gray-600 mt-1">
-                Personalized for: {previewData.lead.firstName || ''} {previewData.lead.lastName || ''} 
-                {previewData.lead.email ? ` (${previewData.lead.email})` : ''}
-              </p>
-            )}
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                  <Mail size={18} />
+                  Email Preview
+                </h3>
+                {previewData?.lead && (
+                  <p className="text-xs text-gray-600 mt-1">
+                    Personalized for: {previewData.lead.firstName || ''} {previewData.lead.lastName || ''} 
+                    {previewData.lead.email ? ` (${previewData.lead.email})` : ''}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={refreshPreview}
+                className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors shadow-sm"
+                title="Pick a random contact and show new spintax variation"
+              >
+                <RefreshCw size={14} />
+                Refresh
+              </button>
+            </div>
           </div>
           <div className="flex-1 overflow-y-auto p-6">
             {loadingPreview ? (
