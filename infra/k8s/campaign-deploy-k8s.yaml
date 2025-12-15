@@ -21,6 +21,23 @@ spec:
         imagePullPolicy: Always
         ports:
         - containerPort: 8081
+        # Health probes - Kubernetes will only route traffic to healthy pods
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8081
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8081
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
         env:
         - name: SERVER_PORT
           value: "8081"

@@ -21,6 +21,23 @@ spec:
         imagePullPolicy: Always
         ports:
         - containerPort: 8090
+        # Health probes - Kubernetes will only route traffic to healthy pods
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8090
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8090
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
         env:
         - name: PORT
           value: "8090"
