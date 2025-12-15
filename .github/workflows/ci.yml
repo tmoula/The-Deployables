@@ -127,7 +127,7 @@ jobs:
         run: |
           GIT_SHA=${{ steps.commit.outputs.sha }}
           helm upgrade --install outreach infra/helm/deployables-chart \
-            --namespace deps-lead-svc --create-namespace \
+            --namespace deps-lead-svc \
             -f infra/helm/deployables-chart/values.yaml \
             --set frontend.image.tag=${GIT_SHA} \
             --set campaign.image.tag=${GIT_SHA} \
