@@ -47,7 +47,7 @@ public class CampaignEntity {
 
     @Column(name = "email_body", columnDefinition = "TEXT")
     private String emailBody;
-    
+
     @Column(name = "email_delay_minutes")
     private Integer emailDelayMinutes; // Delay in minutes between emails (minimum 5)
 

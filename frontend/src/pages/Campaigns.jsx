@@ -517,10 +517,12 @@ export default function Campaigns() {
     try {
       await campaignApi.updateCampaignStatus(campaignId, newStatus);
       await loadCampaigns();
-      if (selectedCampaign && selectedCampaign.id === campaignId) {
-        const updated = await campaignApi.getCampaign(campaignId);
-        setSelectedCampaign(updated);
-      }
+
+      // Always go back to the main campaigns list so nothing "disappears"
+      setSelectedCampaign(null);
+      setShowCreateCampaign(false);
+      setEditingCampaignId(null);
+      setOpenMenuId(null);
     } catch (error) {
       alert("Failed to update campaign status: " + error.message);
     }

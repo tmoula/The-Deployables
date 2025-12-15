@@ -3,10 +3,11 @@ import {
   Eye, Undo2, Redo2, Type, Palette, Highlighter,
   User, Building2, Briefcase, Mail, Hash, FileText,
   CheckCircle, AlertCircle, Info, Sparkles, Loader, X,
-  Smartphone, Monitor
+  Smartphone, Monitor, RefreshCw
 } from "lucide-react";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { SketchPicker } from 'react-color';
+import { campaignApi } from "../../../services/campaignApi";
 
 const AVAILABLE_VARIABLES = [
   { key: 'firstName', label: 'First Name', icon: User },
@@ -25,7 +26,10 @@ export default function EmailComposeArea({
   emailContent,
   setEmailContent,
   campaignName,
-  campaignContext
+  campaignContext,
+  campaignId,
+  contactId,
+  csvColumns = []
 }) {
   const editorRef = useRef(null);
   const [isEditorFocused, setIsEditorFocused] = useState(false);
@@ -45,6 +49,12 @@ export default function EmailComposeArea({
   const [colorPickerColor, setColorPickerColor] = useState({ hex: '#000000' });
   const [highlightPickerColor, setHighlightPickerColor] = useState({ hex: '#FEF08A' });
 
+  // Backend preview state (spintax + {{variable}} rotation)
+  const [backendPreviewSubject, setBackendPreviewSubject] = useState(null);
+  const [backendPreviewBody, setBackendPreviewBody] = useState(null);
+  const [backendPreviewLoading, setBackendPreviewLoading] = useState(false);
+  const [backendPreviewError, setBackendPreviewError] = useState(null);
+
   // Close color pickers when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -61,6 +71,48 @@ export default function EmailComposeArea({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showColorPicker, showHighlightPicker]);
+
+  // Load backend preview (spintax + {{variable}} rotation)
+  const loadBackendPreview = useCallback(async () => {
+    if (!campaignId || !emailSubject || !emailContent) {
+      setBackendPreviewSubject(null);
+      setBackendPreviewBody(null);
+      setBackendPreviewError(null);
+      return;
+    }
+
+    try {
+      setBackendPreviewLoading(true);
+      setBackendPreviewError(null);
+
+      const seed = Date.now();
+
+      const preview = await campaignApi.previewEmail(
+        campaignId,
+        emailSubject,
+        emailContent,
+        contactId || null,
+        seed
+      );
+
+      setBackendPreviewSubject(preview.subject || null);
+      setBackendPreviewBody(preview.bodyPreview || preview.body || null);
+    } catch (error) {
+      console.error("Step2 backend preview failed:", error);
+      setBackendPreviewSubject(null);
+      setBackendPreviewBody(null);
+      setBackendPreviewError("Backend preview unavailable. Showing template only.");
+    } finally {
+      setBackendPreviewLoading(false);
+    }
+  }, [campaignId, emailSubject, emailContent, contactId]);
+
+  // Auto-refresh backend preview when preview is open and content changes
+  useEffect(() => {
+    if (showPreview) {
+      loadBackendPreview();
+    }
+  }, [showPreview, loadBackendPreview, emailSubject, emailContent]);
 
   // Calculate stats
   const getTextStats = (html) => {
@@ -359,18 +411,20 @@ Best regards,
     }
   };
 
-  // Preview with variable replacement
-  const getPreviewContent = () => {
-    let preview = emailContent;
-    AVAILABLE_VARIABLES.forEach(variable => {
-      const regex = new RegExp(`\\{\\{${variable.key}\\}\\}`, 'g');
-      preview = preview.replace(regex, `[${variable.label}]`);
-    });
-    return preview;
+  // Backend + local preview helpers
+  const getPreviewSubject = () => {
+    if (backendPreviewSubject) return backendPreviewSubject;
+    // Fallback: show raw subject with placeholders
+    return emailSubject || "(No subject yet)";
   };
 
-  const getPreviewSubject = () => {
-    let preview = emailSubject;
+  const getPreviewContent = () => {
+    // Prefer backend-rendered HTML when available
+    if (backendPreviewBody) {
+      return backendPreviewBody;
+    }
+    // Fallback: simple local replacement to at least show where variables go
+    let preview = emailContent || "";
     AVAILABLE_VARIABLES.forEach(variable => {
       const regex = new RegExp(`\\{\\{${variable.key}\\}\\}`, 'g');
       preview = preview.replace(regex, `[${variable.label}]`);
@@ -482,9 +536,47 @@ Best regards,
                   >
                     <Smartphone size={14} />
                   </button>
-              </div>
-            </>
-          )}
+                </div>
+
+                {/* Refresh Sample (backend spintax + variable rotation) */}
+                {campaignId && (
+                  <button
+                    type="button"
+                    onClick={loadBackendPreview}
+                    disabled={backendPreviewLoading}
+                    className="px-2 py-1 text-xs rounded border border-gray-300 text-gray-700 hover:bg-gray-100 disabled:opacity-50 flex items-center gap-1"
+                    title="Refresh sample with new contact / spintax"
+                  >
+                    <RefreshCw size={14} className={backendPreviewLoading ? "animate-spin" : ""} />
+                    <span>Refresh sample</span>
+                  </button>
+                )}
+              </>
+            )}
+            {campaignId && (
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    if (editorRef.current) {
+                      const currentContent = editorRef.current.innerHTML;
+                      setEmailContent(currentContent);
+                      await campaignApi.saveCampaignEmail(
+                        campaignId,
+                        emailSubject,
+                        currentContent
+                      );
+                    }
+                  } catch (error) {
+                    console.error("Failed to save campaign email from Step2:", error);
+                  }
+                }}
+                className="px-3 py-1.5 text-xs rounded border border-gray-300 text-gray-700 hover:bg-gray-100 flex items-center gap-1"
+              >
+                <CheckCircle size={14} className="text-green-500" />
+                <span>Save Email</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {
