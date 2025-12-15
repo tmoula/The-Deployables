@@ -108,6 +108,32 @@ jobs:
           cache-from: type=registry,ref=${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/outreach-ui:buildcache
           cache-to: type=registry,ref=${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/outreach-ui:buildcache,mode=max
       
+      # Deploy to GKE using Helm (production)
+      - name: Set up Helm
+        if: github.event_name != 'pull_request'
+        uses: azure/setup-helm@v4
+
+      - name: Configure kubeconfig
+        if: github.event_name != 'pull_request'
+        env:
+          KUBECONFIG_DATA: ${{ secrets.KUBECONFIG_DATA }}
+        run: |
+          mkdir -p $HOME/.kube
+          echo "$KUBECONFIG_DATA" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+
+      - name: Deploy to GKE with Helm
+        if: github.event_name != 'pull_request'
+        run: |
+          GIT_SHA=${{ steps.commit.outputs.sha }}
+          helm upgrade --install outreach infra/helm/deployables-chart \
+            --namespace deps-lead-svc --create-namespace \
+            -f infra/helm/deployables-chart/values.yaml \
+            --set frontend.image.tag=${GIT_SHA} \
+            --set campaign.image.tag=${GIT_SHA} \
+            --set lead.image.tag=${GIT_SHA} \
+            --set auth.image.tag=${GIT_SHA}
+
       - name: Build summary
         if: github.event_name != 'pull_request'
         run: |
