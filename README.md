@@ -189,6 +189,46 @@ See [db/schema.sql](db/schema.sql) for the complete database schema including:
 - Campaign management and sequences
 - Email sending and event tracking
 
+## CI/CD Pipeline
+
+The project uses GitHub Actions for automated build and deployment:
+
+### CI Workflow
+- **Trigger**: Push to `main` branch
+- **Actions**:
+  - Builds all Docker images (auth-svc, campaign-svc, lead-svc, ai-svc, frontend)
+  - Pushes images to Harbor registry: `harbor.javajon-gke.duckdns.org/library`
+
+### CD Workflow
+- **Trigger**: After successful CI workflow completion or manual dispatch
+- **Actions**:
+  - Connects to GKE cluster using kubeconfig
+  - Deploys Kubernetes manifests from `infra/k8s/`
+  - Updates deployment images to latest commit SHA
+
+### Setting Up GitHub Secrets
+
+1. **Create KUBECONFIG_B64 Secret**:
+   ```bash
+   # Base64 encode your GKE kubeconfig file
+   cat ~/.kube/gke-kubeconfig.yaml | base64 | pbcopy  # macOS
+   # or
+   cat ~/.kube/gke-kubeconfig.yaml | base64 -w 0      # Linux
+   ```
+   
+   Then in GitHub:
+   - Go to: Settings → Secrets and variables → Actions
+   - Click "New repository secret"
+   - Name: `KUBECONFIG_B64`
+   - Value: Paste the base64-encoded kubeconfig
+
+2. **Required Secrets**:
+   - `KUBECONFIG_B64`: Base64-encoded GKE kubeconfig file
+   - `HARBOR_USERNAME`: Harbor registry username
+   - `HARBOR_PASSWORD`: Harbor registry password
+   - `REACT_APP_AUTH_URL`: Frontend auth service URL (optional)
+   - `REACT_APP_API_URL`: Frontend API service URL (optional)
+
 ## Kubernetes Deployment
 
 ### Quick Deploy (Local K8s)
@@ -204,32 +244,51 @@ For teammates running this for the first time:
 
 3.  Access the app at **[http://localhost](http://localhost)**.
 
-### Quick Deploy to Kubernetes
+### Production Deployment (GKE)
 
-For production deployment on GKE, see the [Kubernetes Configuration Guide](infra/k8s/README.md).
+Deployment to GKE is automated via GitHub Actions CD workflow. To deploy manually:
 
-1. **Create namespace and apply ConfigMap/Secrets**
+1. **Verify you have kubeconfig configured**:
+   ```bash
+   kubectl config current-context
+   kubectl get nodes
+   ```
+
+2. **Create namespace and apply ConfigMap/Secrets**:
    ```bash
    kubectl apply -f infra/k8s/namespace.yaml
    kubectl apply -f infra/k8s/configmap.yaml
    
-   # Create secrets (see infra/k8s/README.md for details)
-   kubectl apply -f infra/k8s/secrets.yaml
-   kubectl apply -f gke-harbor-secret.yaml -n deps-lead-svc
+   # Create Harbor image pull secret
+   kubectl create secret docker-registry harbor-registry-secret \
+     --docker-server=harbor.javajon-gke.duckdns.org \
+     --docker-username=<your-harbor-username> \
+     --docker-password=<your-harbor-password> \
+     --namespace=deps-lead-svc
    ```
 
-2. **Deploy services**
+3. **Deploy services**:
    ```bash
    cd infra/k8s
-   kubectl apply -f postgres-deploy-k8s.yaml
-   kubectl apply -f auth-svc-deploy-k8s.yaml
-   kubectl apply -f lead-deploy-k8s.yaml
-   kubectl apply -f frontend-deploy-k8s.yaml
+   kubectl apply -f postgres-deploy-k8s.yaml -n deps-lead-svc
+   kubectl apply -f rabbitmq-deploy-k8s.yaml -n deps-lead-svc
+   kubectl apply -f auth-svc-deploy-k8s.yaml -n deps-lead-svc
+   kubectl apply -f lead-deploy-k8s.yaml -n deps-lead-svc
+   kubectl apply -f frontend-deploy-k8s.yaml -n deps-lead-svc
    ```
 
-3. **Verify deployment**
+4. **Update deployment images** (if deploying manually):
+   ```bash
+   # Replace <COMMIT_SHA> with your image tag
+   kubectl set image deployment/auth-deployment \
+     auth-svc=harbor.javajon-gke.duckdns.org/library/auth-svc:<COMMIT_SHA> \
+     -n deps-lead-svc
+   ```
+
+5. **Verify deployment**:
    ```bash
    kubectl get pods -n deps-lead-svc
+   kubectl get deployments -n deps-lead-svc
    kubectl get svc -n deps-lead-svc
    ```
 

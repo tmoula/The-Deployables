@@ -10,11 +10,9 @@ on:
   workflow_dispatch: # Allow manual triggering
 
 env:
-  HARBOR_REGISTRY: harbor.javajon.duckdns.org
-  HARBOR_PROJECT: deps
-  GKE_PROJECT_ID: ${{ secrets.GKE_PROJECT_ID }}
-  GKE_CLUSTER_NAME: ${{ secrets.GKE_CLUSTER_NAME }}
-  GKE_ZONE: ${{ secrets.GKE_ZONE }}
+  HARBOR_REGISTRY: harbor.javajon-gke.duckdns.org
+  HARBOR_PROJECT: library
+  KUBE_NAMESPACE: deps-lead-svc
   KUBECTL_VERSION: "v1.28.0"
 
 jobs:
@@ -23,36 +21,50 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     permissions:
       contents: read
-      id-token: write
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
       
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
         with:
-          credentials_json: ${{ secrets.GKE_SA_KEY }}
+          version: ${{ env.KUBECTL_VERSION }}
       
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-      
-      - name: Configure kubectl
+      - name: Set up kubeconfig
         run: |
-          gcloud container clusters get-credentials ${{ env.GKE_CLUSTER_NAME }} \
-            --zone ${{ env.GKE_ZONE }} \
-            --project ${{ env.GKE_PROJECT_ID }}
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
       
-      - name: Get latest commit SHA from CI workflow
+      - name: Verify cluster connection
+        run: |
+          kubectl cluster-info
+          kubectl get nodes
+      
+      - name: Set cluster context
+        run: |
+          # Use GKE context if available, otherwise use current context
+          GKE_CONTEXT=$(kubectl config get-contexts -o name | grep -i gke | head -1)
+          if [ -n "$GKE_CONTEXT" ]; then
+            kubectl config use-context "$GKE_CONTEXT"
+            echo "✅ Switched to context: $GKE_CONTEXT"
+          else
+            echo "⚠️  No GKE context found, using current context"
+          fi
+          kubectl config current-context
+      
+      - name: Get commit SHA
         id: commit
         run: |
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            SHA=$(git rev-parse --short HEAD)
+            SHA="${{ github.sha }}"
           else
-            SHA=$(echo "${{ github.event.workflow_run.head_sha }}" | cut -c1-7)
+            SHA="${{ github.event.workflow_run.head_sha }}"
           fi
           echo "sha=$SHA" >> $GITHUB_OUTPUT
           echo "Using commit SHA: $SHA"
+          echo "Full SHA: $SHA"
       
       - name: Create or update Harbor image pull secret
         run: |
@@ -60,46 +72,8 @@ jobs:
             --docker-server=${{ env.HARBOR_REGISTRY }} \
             --docker-username=${{ secrets.HARBOR_USERNAME }} \
             --docker-password=${{ secrets.HARBOR_PASSWORD }} \
-            --namespace=deps-lead-svc \
+            --namespace=${{ env.KUBE_NAMESPACE }} \
             --dry-run=client -o yaml | kubectl apply -f -
-      
-      - name: Update image tags in deployment manifests
-        run: |
-          cd infra/k8s
-          
-          # Update auth-svc image (handles both old and new registry formats)
-          if [ -f "auth-svc-deploy-k8s.yaml" ]; then
-            sed -i "s|image:.*auth-svc.*|image: ${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/auth-svc:${{ steps.commit.outputs.sha }}|g" auth-svc-deploy-k8s.yaml
-            echo "✅ Updated auth-svc image tag"
-          fi
-          
-          # Update campaign-svc image (handles both old and new registry formats)
-          if [ -f "campaign-svc-deploy-k8s.yaml" ]; then
-            sed -i "s|image:.*campaign-svc.*|image: ${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/campaign-svc:${{ steps.commit.outputs.sha }}|g" campaign-svc-deploy-k8s.yaml
-            echo "✅ Updated campaign-svc image tag"
-          fi
-          
-          # Update lead-svc image (handles both old and new registry formats)
-          if [ -f "lead-deploy-k8s.yaml" ]; then
-            sed -i "s|image:.*lead-svc.*|image: ${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/lead-svc:${{ steps.commit.outputs.sha }}|g" lead-deploy-k8s.yaml
-            echo "✅ Updated lead-svc image tag"
-          fi
-          
-          # Update ai-svc image (handles both old and new registry formats)
-          if [ -f "ai-svc-deploy-k8s.yaml" ]; then
-            sed -i "s|image:.*ai-svc.*|image: ${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/ai-svc:${{ steps.commit.outputs.sha }}|g" ai-svc-deploy-k8s.yaml
-            echo "✅ Updated ai-svc image tag"
-          fi
-          
-          # Update frontend/outreach-ui image (handles both old and new registry formats)
-          if [ -f "frontend-deploy-k8s.yaml" ]; then
-            sed -i "s|image:.*outreach-ui.*|image: ${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}/outreach-ui:${{ steps.commit.outputs.sha }}|g" frontend-deploy-k8s.yaml
-            echo "✅ Updated frontend/outreach-ui image tag"
-          fi
-          
-          echo ""
-          echo "✅ All image tags updated to use commit SHA: ${{ steps.commit.outputs.sha }}"
-          echo "Registry: ${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}"
       
       - name: Deploy all Kubernetes manifests
         run: |
@@ -110,13 +84,10 @@ jobs:
             "namespace.yaml"
             "configmap.yaml"
             "postgres-deploy-k8s.yaml"
+            "rabbitmq-deploy-k8s.yaml"
             "auth-svc-deploy-k8s.yaml"
             "lead-deploy-k8s.yaml"
             "lead-svc-k8s.yaml"
-            "campaign-svc-deploy-k8s.yaml"
-            "campaign-svc-k8s.yaml"
-            "ai-svc-deploy-k8s.yaml"
-            "ai-svc-k8s.yaml"
             "frontend-deploy-k8s.yaml"
             "frontend-svc-k8s.yaml"
             "ingress.yaml"
@@ -126,7 +97,7 @@ jobs:
           for manifest in "${MANIFEST_ORDER[@]}"; do
             if [ -f "infra/k8s/$manifest" ]; then
               echo "  → Deploying $manifest"
-              kubectl apply -f infra/k8s/$manifest || echo "  ⚠️  Warning: Failed to deploy $manifest (may not exist or already deployed)"
+              kubectl apply -f infra/k8s/$manifest -n ${{ env.KUBE_NAMESPACE }} || echo "  ⚠️  Warning: Failed to deploy $manifest (may not exist or already deployed)"
             fi
           done
           
@@ -139,7 +110,7 @@ jobs:
               # Skip if already processed or is example/README files
               if [[ ! " ${MANIFEST_ORDER[@]} " =~ " ${filename} " ]] && [[ ! "$filename" =~ ^(secrets\.yaml\.example|README\.md|quickstart\.sh)$ ]]; then
                 echo "  → Deploying additional manifest: $filename"
-                kubectl apply -f "$file" || echo "  ⚠️  Warning: Failed to deploy $filename"
+                kubectl apply -f "$file" -n ${{ env.KUBE_NAMESPACE }} || echo "  ⚠️  Warning: Failed to deploy $filename"
               fi
             fi
           done
@@ -147,10 +118,50 @@ jobs:
           echo ""
           echo "✅ All Kubernetes manifests deployed"
       
+      - name: Update deployment images
+        run: |
+          echo "🔄 Updating deployment images to latest commit SHA..."
+          
+          IMAGE_TAG="${{ steps.commit.outputs.sha }}"
+          REGISTRY="${{ env.HARBOR_REGISTRY }}/${{ env.HARBOR_PROJECT }}"
+          
+          # Update auth-deployment
+          echo "  → Updating auth-deployment..."
+          kubectl set image deployment/auth-deployment \
+            auth-svc=$REGISTRY/auth-svc:$IMAGE_TAG \
+            -n ${{ env.KUBE_NAMESPACE }} || echo "  ⚠️  Warning: auth-deployment not found or update failed"
+          
+          # Update lead-deployment
+          echo "  → Updating lead-deployment..."
+          kubectl set image deployment/lead-deployment \
+            lead-svc=$REGISTRY/lead-svc:$IMAGE_TAG \
+            -n ${{ env.KUBE_NAMESPACE }} || echo "  ⚠️  Warning: lead-deployment not found or update failed"
+          
+          # Update frontend-deployment
+          echo "  → Updating frontend-deployment..."
+          kubectl set image deployment/frontend-deployment \
+            outreach-ui=$REGISTRY/outreach-ui:$IMAGE_TAG \
+            -n ${{ env.KUBE_NAMESPACE }} || echo "  ⚠️  Warning: frontend-deployment not found or update failed"
+          
+          # Update campaign-deployment (if exists)
+          echo "  → Updating campaign-deployment..."
+          kubectl set image deployment/campaign-deployment \
+            campaign-svc=$REGISTRY/campaign-svc:$IMAGE_TAG \
+            -n ${{ env.KUBE_NAMESPACE }} || echo "  ⚠️  Warning: campaign-deployment not found or update failed"
+          
+          # Update ai-deployment (if exists)
+          echo "  → Updating ai-deployment..."
+          kubectl set image deployment/ai-deployment \
+            ai-svc=$REGISTRY/ai-svc:$IMAGE_TAG \
+            -n ${{ env.KUBE_NAMESPACE }} || echo "  ⚠️  Warning: ai-deployment not found or update failed"
+          
+          echo ""
+          echo "✅ All deployment images updated"
+      
       - name: Wait for PostgreSQL to be ready
         run: |
           echo "⏳ Waiting for PostgreSQL to be ready..."
-          kubectl wait --for=condition=available --timeout=300s deployment/postgres-deployment -n deps-lead-svc || true
+          kubectl wait --for=condition=available --timeout=300s deployment/postgres-deployment -n ${{ env.KUBE_NAMESPACE }} || true
           sleep 10
       
       - name: Ensure imagePullSecrets are set for all deployments
@@ -158,17 +169,17 @@ jobs:
           echo "🔐 Ensuring imagePullSecrets are set for all deployments..."
           
           # Get all deployments in the namespace
-          DEPLOYMENTS=$(kubectl get deployments -n deps-lead-svc -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || echo "")
+          DEPLOYMENTS=$(kubectl get deployments -n ${{ env.KUBE_NAMESPACE }} -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || echo "")
           
           if [ -z "$DEPLOYMENTS" ]; then
-            echo "⚠️  No deployments found in namespace deps-lead-svc"
+            echo "⚠️  No deployments found in namespace ${{ env.KUBE_NAMESPACE }}"
           else
             for deployment in $DEPLOYMENTS; do
               echo "  → Setting imagePullSecrets for $deployment"
               # Try to add, if it exists try to replace
-              kubectl patch deployment $deployment -n deps-lead-svc --type='json' \
+              kubectl patch deployment $deployment -n ${{ env.KUBE_NAMESPACE }} --type='json' \
                 -p='[{"op": "add", "path": "/spec/template/spec/imagePullSecrets", "value": [{"name": "harbor-registry-secret"}]}]' 2>/dev/null || \
-              kubectl patch deployment $deployment -n deps-lead-svc --type='json' \
+              kubectl patch deployment $deployment -n ${{ env.KUBE_NAMESPACE }} --type='json' \
                 -p='[{"op": "replace", "path": "/spec/template/spec/imagePullSecrets", "value": [{"name": "harbor-registry-secret"}]}]' 2>/dev/null || true
             done
           fi
@@ -178,17 +189,17 @@ jobs:
           echo "🔄 Setting imagePullPolicy to Always for all deployments..."
           
           # Get all deployments in the namespace
-          DEPLOYMENTS=$(kubectl get deployments -n deps-lead-svc -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || echo "")
+          DEPLOYMENTS=$(kubectl get deployments -n ${{ env.KUBE_NAMESPACE }} -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || echo "")
           
           if [ -z "$DEPLOYMENTS" ]; then
-            echo "⚠️  No deployments found in namespace deps-lead-svc"
+            echo "⚠️  No deployments found in namespace ${{ env.KUBE_NAMESPACE }}"
           else
             for deployment in $DEPLOYMENTS; do
               echo "  → Setting imagePullPolicy for $deployment"
               # Get number of containers and update each one
-              CONTAINER_COUNT=$(kubectl get deployment $deployment -n deps-lead-svc -o jsonpath='{.spec.template.spec.containers[*].name}' | wc -w)
+              CONTAINER_COUNT=$(kubectl get deployment $deployment -n ${{ env.KUBE_NAMESPACE }} -o jsonpath='{.spec.template.spec.containers[*].name}' | wc -w)
               for i in $(seq 0 $((CONTAINER_COUNT - 1))); do
-                kubectl patch deployment $deployment -n deps-lead-svc --type='json' \
+                kubectl patch deployment $deployment -n ${{ env.KUBE_NAMESPACE }} --type='json' \
                   -p="[{\"op\": \"replace\", \"path\": \"/spec/template/spec/containers/$i/imagePullPolicy\", \"value\": \"Always\"}]" 2>/dev/null || true
               done
             done
@@ -199,35 +210,34 @@ jobs:
           echo "⏳ Waiting for all deployments to be ready..."
           
           # Get all deployment names
-          DEPLOYMENTS=$(kubectl get deployments -n deps-lead-svc -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || echo "")
+          DEPLOYMENTS=$(kubectl get deployments -n ${{ env.KUBE_NAMESPACE }} -o jsonpath='{.items[*].metadata.name}' 2>/dev/null || echo "")
           
           if [ -z "$DEPLOYMENTS" ]; then
             echo "⚠️  No deployments found"
           else
             for deployment in $DEPLOYMENTS; do
               echo "  → Waiting for $deployment..."
-              kubectl wait --for=condition=available --timeout=300s deployment/$deployment -n deps-lead-svc || echo "  ⚠️  Warning: $deployment not ready within timeout"
+              kubectl rollout status deployment/$deployment -n ${{ env.KUBE_NAMESPACE }} --timeout=300s || echo "  ⚠️  Warning: $deployment not ready within timeout"
             done
           fi
       
       - name: Verify deployments
         run: |
           echo "=== Deployment Status ==="
-          kubectl get deployments -n deps-lead-svc
+          kubectl get deployments -n ${{ env.KUBE_NAMESPACE }}
           echo ""
           echo "=== Pod Status ==="
-          kubectl get pods -n deps-lead-svc
+          kubectl get pods -n ${{ env.KUBE_NAMESPACE }}
           echo ""
           echo "=== Services ==="
-          kubectl get services -n deps-lead-svc
+          kubectl get services -n ${{ env.KUBE_NAMESPACE }}
       
       - name: Deployment summary
         run: |
           echo "## 🚀 Deployment Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "All container images have been deployed to GKE cluster:" >> $GITHUB_STEP_SUMMARY
-          echo "- **Cluster**: \`${{ env.GKE_CLUSTER_NAME }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Namespace**: \`deps-lead-svc\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Namespace**: \`${{ env.KUBE_NAMESPACE }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit SHA**: \`${{ steps.commit.outputs.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Deployed Images from Harbor:" >> $GITHUB_STEP_SUMMARY
