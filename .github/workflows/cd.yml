@@ -88,6 +88,8 @@ jobs:
             "auth-svc-deploy-k8s.yaml"
             "lead-deploy-k8s.yaml"
             "lead-svc-k8s.yaml"
+            "campaign-svc-deploy-k8s.yaml"
+            "campaign-svc-k8s.yaml"
             "frontend-deploy-k8s.yaml"
             "frontend-svc-k8s.yaml"
             "ingress.yaml"
