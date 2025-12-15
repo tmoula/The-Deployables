@@ -1,7 +1,8 @@
 import { authService } from './authService';
 
 // Campaign Service API
-const CAMPAIGN_API_URL = process.env.REACT_APP_CAMPAIGN_API_URL || 'http://localhost:8081/api/v1';
+// Use the shared REACT_APP_API_URL (which is /api/v1 in prod) to ensure relative paths work through Ingress
+const CAMPAIGN_API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8081/api/v1';
 
 function getUserEmailHeaders(extraHeaders = {}) {
   const email = authService.getUserEmail();
@@ -15,7 +16,8 @@ function getUserEmailHeaders(extraHeaders = {}) {
 export const campaignApi = {
   // Health check
   async checkHealth() {
-    const response = await fetch(`${CAMPAIGN_API_URL}/health`);
+    // Check specific Campaign Service health endpoint
+    const response = await fetch(`${CAMPAIGN_API_URL}/campaigns/health`);
     return response.json();
   },
 
@@ -56,19 +58,19 @@ export const campaignApi = {
     const headers = getUserEmailHeaders();
     console.log('📋 Fetching campaigns with headers:', headers);
     console.log('📋 Campaign API URL:', `${CAMPAIGN_API_URL}/campaigns`);
-    
+
     const response = await fetch(`${CAMPAIGN_API_URL}/campaigns`, {
       headers: headers
     });
-    
+
     console.log('📋 Campaigns response status:', response.status);
-    
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error('📋 Failed to fetch campaigns:', errorText);
       throw new Error(`Failed to fetch campaigns: ${response.statusText} - ${errorText}`);
     }
-    
+
     const data = await response.json();
     console.log('📋 Received campaigns:', data);
     return data;
@@ -147,7 +149,7 @@ export const campaignApi = {
       const integerSeed = Math.floor(spintaxSeed);
       url.searchParams.append('spintaxSeed', integerSeed.toString());
     }
-    
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -156,7 +158,7 @@ export const campaignApi = {
       },
       body: JSON.stringify({ subject, body })
     });
-    
+
     if (!response.ok) {
       let errorMessage = `Failed to preview email: ${response.statusText}`;
       try {
@@ -170,7 +172,7 @@ export const campaignApi = {
       }
       throw new Error(errorMessage);
     }
-    
+
     return response.json();
   },
 
@@ -178,7 +180,7 @@ export const campaignApi = {
   async deleteCampaign(campaignId) {
     const headers = getUserEmailHeaders();
     console.log('🗑️ Deleting campaign:', campaignId, 'with headers:', headers);
-    
+
     const response = await fetch(`${CAMPAIGN_API_URL}/campaigns/${campaignId}`, {
       method: 'DELETE',
       headers: headers
@@ -191,7 +193,7 @@ export const campaignApi = {
       console.error('🗑️ Delete error:', error);
       throw new Error(error.error || `Failed to delete campaign: ${response.statusText}`);
     }
-    
+
     console.log('🗑️ Campaign deleted successfully');
   },
 
@@ -200,23 +202,23 @@ export const campaignApi = {
     const headers = getUserEmailHeaders({
       'Content-Type': 'application/json'
     });
-    
+
     console.log('💾 Saving email for campaign:', campaignId);
-    
+
     const response = await fetch(`${CAMPAIGN_API_URL}/campaigns/${campaignId}/email`, {
       method: 'PUT',
       headers: headers,
       body: JSON.stringify({ emailSubject, emailBody })
     });
-    
+
     console.log('💾 Save email response status:', response.status);
-    
+
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: response.statusText }));
       console.error('💾 Save email error:', error);
       throw new Error(error.error || `Failed to save email: ${response.statusText}`);
     }
-    
+
     const data = await response.json();
     console.log('💾 Email saved successfully:', data);
     return data;
@@ -227,23 +229,23 @@ export const campaignApi = {
     const headers = getUserEmailHeaders({
       'Content-Type': 'application/json'
     });
-    
+
     console.log('📅 Scheduling campaign:', campaignId, scheduleSettings);
-    
+
     const response = await fetch(`${CAMPAIGN_API_URL}/campaigns/${campaignId}/schedule`, {
       method: 'PUT',
       headers: headers,
       body: JSON.stringify(scheduleSettings)
     });
-    
+
     console.log('📅 Schedule campaign response status:', response.status);
-    
+
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: response.statusText }));
       console.error('📅 Schedule campaign error:', error);
       throw new Error(error.error || `Failed to schedule campaign: ${response.statusText}`);
     }
-    
+
     const data = await response.json();
     console.log('📅 Campaign scheduled successfully:', data);
     return data;

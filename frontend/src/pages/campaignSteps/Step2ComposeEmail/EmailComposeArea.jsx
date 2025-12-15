@@ -7,10 +7,8 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { SketchPicker } from 'react-color';
-import { campaignApi } from '../../../services/campaignApi';
 
-// Base variables that are always available
-const BASE_VARIABLES = [
+const AVAILABLE_VARIABLES = [
   { key: 'firstName', label: 'First Name', icon: User },
   { key: 'lastName', label: 'Last Name', icon: User },
   { key: 'company', label: 'Company', icon: Building2 },
@@ -21,35 +19,13 @@ const BASE_VARIABLES = [
   { key: 'personalizationHook', label: 'Personalization Hook', icon: FileText },
 ];
 
-// Helper function to convert CSV column name to variable key
-const columnToVariableKey = (columnName) => {
-  return columnName
-    .toLowerCase()
-    .replace(/\s+/g, '_')
-    .replace(/[^a-z0-9_]/g, '');
-};
-
-// Helper function to get icon for CSV column (default to FileText)
-const getColumnIcon = (columnName) => {
-  const lower = columnName.toLowerCase();
-  if (lower.includes('name') || lower.includes('first') || lower.includes('last')) return User;
-  if (lower.includes('company') || lower.includes('business')) return Building2;
-  if (lower.includes('position') || lower.includes('title') || lower.includes('role')) return Briefcase;
-  if (lower.includes('email') || lower.includes('mail')) return Mail;
-  if (lower.includes('domain') || lower.includes('website') || lower.includes('url')) return Hash;
-  return FileText;
-};
-
 export default function EmailComposeArea({
   emailSubject,
   setEmailSubject,
   emailContent,
   setEmailContent,
   campaignName,
-  campaignContext,
-  campaignId,
-  contactId,
-  csvColumns = []
+  campaignContext
 }) {
   const editorRef = useRef(null);
   const [isEditorFocused, setIsEditorFocused] = useState(false);
@@ -61,63 +37,15 @@ export default function EmailComposeArea({
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [showAIFeedback, setShowAIFeedback] = useState(true);
   const [aiFeedback, setAiFeedback] = useState({ subject: [], content: [] });
+  const [isAIGenerating, setIsAIGenerating] = useState(false);
   const feedbackTimeoutRef = useRef(null);
   const [previewMode, setPreviewMode] = useState('desktop'); // 'desktop', 'phone'
   const [phoneNotificationType, setPhoneNotificationType] = useState('lockscreen'); // 'lockscreen', 'popup'
   const [emailClient, setEmailClient] = useState('gmail'); // 'gmail', 'outlook', 'apple-mail'
   const [colorPickerColor, setColorPickerColor] = useState({ hex: '#000000' });
   const [highlightPickerColor, setHighlightPickerColor] = useState({ hex: '#FEF08A' });
-  const [contactData, setContactData] = useState(null);
-  const [previewKey, setPreviewKey] = useState(0); // Used to refresh preview with new spintax
-  const [previewData, setPreviewData] = useState(null); // Rendered preview from backend
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveMessage, setSaveMessage] = useState(null);
-  
-  // Autocomplete state
-  const [showAutocomplete, setShowAutocomplete] = useState(false);
-  const [autocompleteSuggestions, setAutocompleteSuggestions] = useState([]);
-  const [autocompletePrefix, setAutocompletePrefix] = useState('');
-  const [autocompletePosition, setAutocompletePosition] = useState({ top: 0, left: 0 });
-  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0);
-  const [autocompleteTriggerIndex, setAutocompleteTriggerIndex] = useState(-1);
-  const [autocompleteField, setAutocompleteField] = useState(null); // 'subject' or 'body'
-  const autocompleteRef = useRef(null);
 
-  // Generate variables from CSV columns
-  const csvVariables = csvColumns.map(column => ({
-    key: columnToVariableKey(column),
-    label: column,
-    icon: getColumnIcon(column),
-    isFromCsv: true
-  }));
-  
-  // Merge base variables with CSV variables (CSV takes precedence if duplicate keys)
-  const AVAILABLE_VARIABLES = [
-    ...BASE_VARIABLES.filter(baseVar => 
-      !csvVariables.some(csvVar => csvVar.key === baseVar.key)
-    ),
-    ...csvVariables
-  ];
-  
-  // Get all variable keys for autocomplete (use original CSV column names or variable keys)
-  const getAllVariableKeys = () => {
-    const keys = [];
-    // Add CSV column names (original format)
-    csvColumns.forEach(col => {
-      keys.push(col); // Original column name
-      keys.push(columnToVariableKey(col)); // Normalized key
-    });
-    // Add base variable keys
-    BASE_VARIABLES.forEach(v => {
-      if (!keys.includes(v.key)) {
-        keys.push(v.key);
-      }
-    });
-    return [...new Set(keys)]; // Remove duplicates
-  };
-
-  // Close color pickers and autocomplete when clicking outside
+  // Close color pickers when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (showColorPicker && !event.target.closest('.color-picker-container')) {
@@ -126,19 +54,13 @@ export default function EmailComposeArea({
       if (showHighlightPicker && !event.target.closest('.highlight-picker-container')) {
         setShowHighlightPicker(false);
       }
-      if (showAutocomplete && autocompleteRef.current && !autocompleteRef.current.contains(event.target)) {
-        // Don't close if clicking on the input/editor itself
-        if (!event.target.closest('input') && !event.target.closest('[contenteditable="true"]')) {
-          setShowAutocomplete(false);
-        }
-      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showColorPicker, showHighlightPicker, showAutocomplete]);
+  }, [showColorPicker, showHighlightPicker]);
 
   // Calculate stats
   const getTextStats = (html) => {
@@ -283,6 +205,8 @@ Best regards,<br>
 
   // AI Feedback Generation (Mock - will be replaced with actual AI service)
   const generateAIFeedback = useCallback(async (subject, content, campaignName, campaignContext) => {
+    setIsAIGenerating(true);
+    
     // TODO: Replace with actual AI service call
     // const response = await aiService.generateFeedback({
     //   subject,
@@ -364,6 +288,7 @@ Best regards,<br>
     }
     
     setAiFeedback({ subject: subjectFeedback, content: contentFeedback });
+    setIsAIGenerating(false);
   }, []);
 
   // Debounced AI feedback generation
@@ -385,263 +310,11 @@ Best regards,<br>
     };
   }, [emailSubject, emailContent, campaignName, campaignContext, generateAIFeedback]);
 
-  // Autocomplete: Check for {{ trigger and show suggestions
-  const checkAutocomplete = (text, cursorPosition, inputElement, fieldType) => {
-    if (!text || cursorPosition === null) {
-      setShowAutocomplete(false);
-      setAutocompleteField(null);
-      return;
-    }
-    
-    // Find the last {{ before cursor
-    const textBeforeCursor = text.substring(0, cursorPosition);
-    const triggerIndex = textBeforeCursor.lastIndexOf('{{');
-    
-    if (triggerIndex === -1) {
-      setShowAutocomplete(false);
-      setAutocompleteField(null);
-      return;
-    }
-    
-    // Check if there's already a closing }}
-    const textAfterTrigger = textBeforeCursor.substring(triggerIndex + 2);
-    if (textAfterTrigger.includes('}}')) {
-      setShowAutocomplete(false);
-      setAutocompleteField(null);
-      return;
-    }
-    
-    // Extract prefix (what user typed after {{)
-    const prefix = textAfterTrigger.trim();
-    
-    // Get all variable keys
-    const allVariables = getAllVariableKeys();
-    
-    // Filter variables by prefix
-    const suggestions = allVariables.filter(v => 
-      v.toLowerCase().startsWith(prefix.toLowerCase())
-    );
-    
-    if (suggestions.length > 0) {
-      setAutocompletePrefix(prefix);
-      setAutocompleteSuggestions(suggestions);
-      setAutocompleteTriggerIndex(triggerIndex);
-      setSelectedSuggestionIndex(0);
-      setAutocompleteField(fieldType); // Track which field is active
-      setShowAutocomplete(true);
-      
-      // Calculate dropdown position
-      if (inputElement) {
-        const rect = inputElement.getBoundingClientRect();
-        // For input, estimate position based on cursor
-        const textBeforeCursorWidth = getTextWidth(textBeforeCursor, inputElement);
-        setAutocompletePosition({
-          top: rect.bottom + 5,
-          left: rect.left + textBeforeCursorWidth
-        });
-      } else if (editorRef.current) {
-        // For contentEditable, use selection position relative to editor container
-        const selection = window.getSelection();
-        if (selection && selection.rangeCount > 0) {
-          const range = selection.getRangeAt(0);
-          const editorRect = editorRef.current.getBoundingClientRect();
-          const rangeRect = range.getBoundingClientRect();
-          setAutocompletePosition({
-            top: rangeRect.bottom - editorRect.top + 5,
-            left: rangeRect.left - editorRect.left
-          });
-        }
-      }
-    } else {
-      setShowAutocomplete(false);
-      setAutocompleteField(null);
-    }
-  };
-  
-  // Helper to estimate text width (for input positioning)
-  const getTextWidth = (text, element) => {
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    const style = window.getComputedStyle(element);
-    context.font = `${style.fontSize} ${style.fontFamily}`;
-    return context.measureText(text).width;
-  };
-  
-  // Apply autocomplete suggestion - simplified and more reliable
-  const applySuggestion = (selectedVar, isSubject = false) => {
-    if (isSubject) {
-      const input = document.activeElement;
-      if (input && input.tagName === 'INPUT') {
-        const value = input.value;
-        const cursor = input.selectionStart || value.length;
-        const before = value.substring(0, autocompleteTriggerIndex);
-        const after = value.substring(cursor);
-        const newValue = `${before}{{${selectedVar}}}${after}`;
-        
-        setEmailSubject(newValue);
-        
-        // Move cursor after }}
-        setTimeout(() => {
-          const newInput = document.activeElement;
-          if (newInput && newInput.tagName === 'INPUT') {
-            const newCursorPos = before.length + selectedVar.length + 4; // {{ + var + }}
-            newInput.setSelectionRange(newCursorPos, newCursorPos);
-            // Re-check autocomplete in case user continues typing
-            checkAutocomplete(newValue, newCursorPos, newInput, 'subject');
-          }
-        }, 0);
-      }
-    } else {
-      // For contentEditable - simpler approach that preserves flow
-      if (editorRef.current) {
-        const selection = window.getSelection();
-        if (selection && selection.rangeCount > 0) {
-          const range = selection.getRangeAt(0);
-          
-          // Get current text node and offset
-          let textNode = range.startContainer;
-          let offset = range.startOffset;
-          
-          // Ensure we're in a text node
-          if (textNode.nodeType !== Node.TEXT_NODE) {
-            // Find the text node at this position
-            if (textNode.childNodes.length > 0 && offset < textNode.childNodes.length) {
-              textNode = textNode.childNodes[offset];
-              offset = 0;
-            } else {
-              // Find nearest text node
-              const walker = document.createTreeWalker(
-                textNode,
-                NodeFilter.SHOW_TEXT,
-                null
-              );
-              textNode = walker.nextNode() || editorRef.current;
-              offset = 0;
-            }
-          }
-          
-          // Get the text content of the current node
-          const nodeText = textNode.textContent;
-          
-          // Calculate where {{ starts relative to this node
-          // We need to find the absolute position of {{ in the full text
-          const fullText = editorRef.current.textContent || editorRef.current.innerText;
-          
-          // Calculate absolute position of current cursor
-          let absoluteCursor = 0;
-          const allTextNodes = [];
-          const nodeWalker = document.createTreeWalker(
-            editorRef.current,
-            NodeFilter.SHOW_TEXT,
-            null
-          );
-          let n;
-          while (n = nodeWalker.nextNode()) {
-            allTextNodes.push(n);
-            if (n === textNode) {
-              absoluteCursor += offset;
-              break;
-            }
-            absoluteCursor += n.textContent.length;
-          }
-          
-          // Find {{ trigger in full text
-          const textBeforeCursor = fullText.substring(0, absoluteCursor);
-          const triggerIndex = textBeforeCursor.lastIndexOf('{{');
-          
-          if (triggerIndex !== -1) {
-            // Calculate which text node contains the trigger
-            let triggerNode = null;
-            let triggerOffset = 0;
-            let currentPos = 0;
-            
-            for (const tn of allTextNodes) {
-              const nodeLength = tn.textContent.length;
-              if (currentPos + nodeLength > triggerIndex) {
-                triggerNode = tn;
-                triggerOffset = triggerIndex - currentPos;
-                break;
-              }
-              currentPos += nodeLength;
-            }
-            
-            if (triggerNode) {
-              // Calculate what to replace - simpler approach
-              const charsToRemove = absoluteCursor - triggerIndex;
-              const nodeText = triggerNode.textContent;
-              const beforeText = nodeText.substring(0, triggerOffset);
-              const afterText = nodeText.substring(triggerOffset + charsToRemove);
-              
-              // Update the trigger node - this preserves formatting
-              triggerNode.textContent = beforeText + `{{${selectedVar}}}` + afterText;
-              
-              // Update state
-              setEmailContent(editorRef.current.innerHTML);
-              
-              // Move cursor after }}
-              setTimeout(() => {
-                const newSelection = window.getSelection();
-                if (newSelection && triggerNode) {
-                  const newOffset = triggerOffset + selectedVar.length + 4; // {{ + var + }}
-                  const newRange = document.createRange();
-                  newRange.setStart(triggerNode, Math.min(newOffset, triggerNode.textContent.length));
-                  newRange.setEnd(triggerNode, Math.min(newOffset, triggerNode.textContent.length));
-                  newSelection.removeAllRanges();
-                  newSelection.addRange(newRange);
-                  
-                  // Re-check autocomplete
-                  const newFullText = editorRef.current.textContent || editorRef.current.innerText;
-                  const newAbsoluteCursor = currentPos + newOffset;
-                  checkAutocomplete(newFullText, newAbsoluteCursor, null, 'body');
-                }
-              }, 10);
-            }
-          }
-        }
-      }
-    }
-    
-    setShowAutocomplete(false);
-  };
-  
-  // Handle keyboard navigation in autocomplete
-  const handleAutocompleteKeyDown = (e, isSubject = false) => {
-    if (!showAutocomplete) return;
-    
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setSelectedSuggestionIndex(prev => 
-        Math.min(prev + 1, autocompleteSuggestions.length - 1)
-      );
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setSelectedSuggestionIndex(prev => Math.max(prev - 1, 0));
-    } else if (e.key === 'Enter' || e.key === 'Tab') {
-      e.preventDefault();
-      if (autocompleteSuggestions[selectedSuggestionIndex]) {
-        applySuggestion(autocompleteSuggestions[selectedSuggestionIndex], isSubject);
-      }
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      setShowAutocomplete(false);
-    }
-  };
-
   // Handle editor content changes
   const handleEditorChange = () => {
     if (editorRef.current) {
       const content = editorRef.current.innerHTML;
       setEmailContent(content);
-      
-      // Check for autocomplete trigger
-      const textContent = editorRef.current.textContent || editorRef.current.innerText;
-      const selection = window.getSelection();
-      if (selection && selection.rangeCount > 0) {
-        const range = selection.getRangeAt(0);
-        const cursor = range.startOffset;
-        checkAutocomplete(textContent, cursor, null, 'body');
-      }
-      
       // Auto-save to history on typing (debounced)
       if (isEditorFocused) {
         const timeoutId = setTimeout(() => {
@@ -652,250 +325,57 @@ Best regards,<br>
     }
   };
 
+  // AI Writing Assistant - Generate email content
+  const handleAIWriting = async () => {
+    setIsAIGenerating(true);
+    // TODO: Replace with actual AI service call
+    // const response = await aiService.generateEmail({
+    //   campaignName,
+    //   campaignContext,
+    //   emailType: 'initial' // or 'follow-up'
+    // });
+    
+    // Mock AI generation
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    
+    const mockSubject = campaignName 
+      ? `Quick question about ${campaignName}`
+      : 'Quick question about your business';
+    
+    const mockContent = `Hi {{firstName}},
 
-  // Fetch contact data for preview
-  useEffect(() => {
-    const fetchContactData = async () => {
-      if (contactId && campaignId) {
-        try {
-          const contacts = await campaignApi.getCampaignContacts(campaignId);
-          const contact = contacts?.find(c => c.contactId === contactId) || contacts?.[0];
-          if (contact) {
-            setContactData(contact);
-          }
-        } catch (error) {
-          console.error("Failed to fetch contact data:", error);
-        }
-      }
-    };
-    fetchContactData();
-  }, [contactId, campaignId]);
+I noticed {{company}} is in the {{industry}} space. I'd love to share how we've helped similar companies [achieve specific result].
 
-  // Expand spintax: {option1|option2|option3} -> randomly pick one
-  // IMPORTANT: Preserve {{variable}} patterns (double braces) - only expand single brace spintax
-  const expandSpintax = (text) => {
-    if (!text) return text;
-    
-    // Use a seed based on previewKey to get consistent random selection for this preview
-    let seed = previewKey;
-    const random = () => {
-      seed = (seed * 9301 + 49297) % 233280;
-      return seed / 233280;
-    };
-    
-    // First, temporarily replace {{variable}} with placeholders to protect them
-    const variablePlaceholders = new Map();
-    let placeholderIndex = 0;
-    let protectedText = text;
-    
-    // Protect all {{variable}} patterns
-    protectedText = protectedText.replace(/\{\{(\w+)\}\}/g, (match, varName) => {
-      const placeholder = `__VAR_PLACEHOLDER_${placeholderIndex}__`;
-      variablePlaceholders.set(placeholder, match);
-      placeholderIndex++;
-      return placeholder;
-    });
-    
-    // Now expand spintax patterns (single braces only)
-    let expanded = protectedText.replace(/\{([^}]+)\}/g, (match, options) => {
-      const choices = options.split('|').map(opt => opt.trim());
-      if (choices.length === 0) return match;
-      const selected = choices[Math.floor(random() * choices.length)];
-      return selected;
-    });
-    
-    // Restore {{variable}} patterns
-    variablePlaceholders.forEach((original, placeholder) => {
-      expanded = expanded.replace(placeholder, original);
-    });
-    
-    return expanded;
-  };
+Would you be open to a quick 15-minute conversation this week?
 
-  // Replace variables with actual contact/company data from CSV
-  // This runs AFTER spintax expansion, so {{variable}} should be intact
-  const replaceVariables = (text) => {
-    if (!text) return text;
+Best regards,
+[Your Name]`;
     
-    // Build replacements map from contactData (includes all CSV columns)
-    const replacements = {};
-    
-    if (contactData) {
-      // Add all fields from contactData (which includes CSV columns)
-      Object.keys(contactData).forEach(key => {
-        const value = contactData[key];
-        if (value != null) {
-          // Add with original key name
-          replacements[`{{${key}}}`] = String(value);
-          // Add normalized versions
-          const normalized = key.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
-          replacements[`{{${normalized}}}`] = String(value);
-          replacements[`{{${normalized.replace(/_/g, '')}}}`] = String(value); // first_name -> firstname
-        }
-      });
-      
-      // Add standard mappings for backward compatibility
-      replacements['{{firstName}}'] = contactData.firstName || contactData.first_name || '';
-      replacements['{{lastName}}'] = contactData.lastName || contactData.last_name || '';
-      replacements['{{company}}'] = contactData.companyName || contactData.company_name || contactData.company || '';
-      replacements['{{position}}'] = contactData.jobTitle || contactData.job_title || contactData.position || '';
-      replacements['{{email}}'] = contactData.email || '';
-      replacements['{{domain}}'] = (contactData.email && contactData.email.includes('@')) 
-        ? contactData.email.split('@')[1] 
-        : (contactData.domain || '');
-    }
-    
-    // If no contactData, try to use previewData.lead if available
-    if (Object.keys(replacements).length === 0 && previewData?.lead) {
-      const lead = previewData.lead;
-      replacements['{{firstName}}'] = lead.firstName || '';
-      replacements['{{lastName}}'] = lead.lastName || '';
-      replacements['{{company}}'] = lead.companyName || '';
-      replacements['{{position}}'] = lead.jobTitle || '';
-      replacements['{{email}}'] = lead.email || '';
-    }
-    
-    let result = text;
-    // Replace each variable (escape braces for regex)
-    // Sort by length (longest first) to avoid partial matches
-    const sortedVars = Object.keys(replacements).sort((a, b) => b.length - a.length);
-    sortedVars.forEach((variable) => {
-      const value = replacements[variable];
-      // Escape braces: {{variable}} -> \{\{variable\}\}
-      const escaped = variable.replace(/[{}]/g, '\\$&');
-      const regex = new RegExp(escaped, 'gi'); // Case-insensitive
-      result = result.replace(regex, value);
-    });
-    
-    return result;
-  };
-
-  // Load preview from backend when preview is shown
-  useEffect(() => {
-    if (showPreview && campaignId && (emailSubject || emailContent)) {
-      loadPreviewFromBackend();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showPreview, campaignId]);
-  
-  const loadPreviewFromBackend = async (spintaxSeed = null) => {
-    if (!campaignId) return;
-    
-    try {
-      setPreviewLoading(true);
-      // Generate a new seed for spintax rotation if not provided
-      // Each preview refresh will show different spintax selections
-      // Use integer seed - backend expects Long (integer), not decimal
-      const seed = spintaxSeed !== null ? Math.floor(spintaxSeed) : Date.now();
-      
-      const result = await campaignApi.previewEmail(
-        campaignId,
-        emailSubject || '',
-        emailContent || '',
-        null, // leadId - use random lead
-        seed  // spintax seed for rotation
-      );
-      setPreviewData(result);
-      // Also update contactData from the lead info returned
-      if (result.lead) {
-        const contactDataUpdate = {
-          firstName: result.lead.firstName,
-          lastName: result.lead.lastName,
-          companyName: result.lead.companyName,
-          email: result.lead.email,
-          jobTitle: result.lead.jobTitle,
-          ...result.lead // Include any other CSV columns
-        };
-        // If CSV data is included in the response, merge it into contactData
-        if (result.lead.csvData) {
-          Object.assign(contactDataUpdate, result.lead.csvData);
-          console.log('✅ Merged CSV data into contactData:', Object.keys(result.lead.csvData));
-        }
-        setContactData(contactDataUpdate);
-        console.log('✅ Updated contactData with keys:', Object.keys(contactDataUpdate));
-      }
-      console.log('✅ Preview loaded from backend with spintax seed:', seed);
-      console.log('✅ Preview result:', {
-        subject: result.subject,
-        bodyPreview: result.body?.substring(0, 200),
-        lead: result.lead
-      });
-    } catch (error) {
-      console.error('❌ Failed to load preview:', error);
-      // Fallback to local preview if backend fails
-      setPreviewData(null);
-    } finally {
-      setPreviewLoading(false);
+    if (editorRef.current) {
+      editorRef.current.innerHTML = mockContent;
+      setEmailContent(mockContent);
+      setEmailSubject(mockSubject);
+      setIsAIGenerating(false);
     }
   };
 
-  // Preview with spintax expansion and variable replacement (fallback/local)
+  // Preview with variable replacement
   const getPreviewContent = () => {
-    // Use backend preview if available
-    if (previewData?.body) {
-      return previewData.body;
-    }
-    
-    let preview = emailContent || '';
-    // First expand spintax
-    preview = expandSpintax(preview);
-    // Then replace variables
-    preview = replaceVariables(preview);
+    let preview = emailContent;
+    AVAILABLE_VARIABLES.forEach(variable => {
+      const regex = new RegExp(`\\{\\{${variable.key}\\}\\}`, 'g');
+      preview = preview.replace(regex, `[${variable.label}]`);
+    });
     return preview;
   };
 
   const getPreviewSubject = () => {
-    // Use backend preview if available
-    if (previewData?.subject) {
-      return previewData.subject;
-    }
-    
-    let preview = emailSubject || '';
-    // First expand spintax
-    preview = expandSpintax(preview);
-    // Then replace variables
-    preview = replaceVariables(preview);
+    let preview = emailSubject;
+    AVAILABLE_VARIABLES.forEach(variable => {
+      const regex = new RegExp(`\\{\\{${variable.key}\\}\\}`, 'g');
+      preview = preview.replace(regex, `[${variable.label}]`);
+    });
     return preview;
-  };
-
-  // Refresh preview with new spintax selection (reload from backend)
-  // Each refresh generates a new random seed, showing different spintax rotations
-  const refreshPreview = () => {
-    // Generate a new random seed for spintax rotation
-    const newSeed = Date.now() + Math.random() * 1000000;
-    setPreviewKey(prev => prev + 1);
-    if (showPreview && campaignId) {
-      loadPreviewFromBackend(newSeed);
-    }
-  };
-
-  // Save email to campaign
-  const handleSaveEmail = async () => {
-    if (!campaignId) {
-      setSaveMessage({ type: 'error', text: 'No campaign ID found. Please create a campaign first.' });
-      setTimeout(() => setSaveMessage(null), 3000);
-      return;
-    }
-    
-    // Save editor content before saving
-    if (editorRef.current) {
-      const currentContent = editorRef.current.innerHTML;
-      setEmailContent(currentContent);
-    }
-    
-    setIsSaving(true);
-    setSaveMessage(null);
-    
-    try {
-      await campaignApi.saveCampaignEmail(campaignId, emailSubject, emailContent);
-      setSaveMessage({ type: 'success', text: 'Email saved successfully!' });
-      setTimeout(() => setSaveMessage(null), 3000);
-    } catch (error) {
-      setSaveMessage({ type: 'error', text: error.message || 'Failed to save email' });
-      setTimeout(() => setSaveMessage(null), 5000);
-    } finally {
-      setIsSaving(false);
-    }
   };
 
   const colors = [
@@ -938,20 +418,9 @@ Best regards,<br>
             <input
               type="text"
               value={emailSubject}
-              onChange={(e) => {
-                setEmailSubject(e.target.value);
-                const cursor = e.target.selectionStart || e.target.value.length;
-                checkAutocomplete(e.target.value, cursor, e.target, 'subject');
-              }}
-              onKeyDown={(e) => handleAutocompleteKeyDown(e, true)}
-              onSelect={(e) => {
-                const cursor = e.target.selectionStart || e.target.value.length;
-                checkAutocomplete(e.target.value, cursor, e.target, 'subject');
-              }}
-              onFocus={(e) => {
-                const cursor = e.target.selectionStart || e.target.value.length;
-                checkAutocomplete(e.target.value, cursor, e.target, 'subject');
-              }}
+              onChange={(e) =>
+                setEmailSubject(e.target.value)
+              }
               placeholder="Enter email subject..."
               className="w-full bg-transparent border border-gray-300/50 backdrop-blur-sm bg-white/30 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-400/50 px-3 py-2 rounded-lg shadow-sm transition-all"
             />
@@ -963,42 +432,6 @@ Best regards,<br>
             <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400">
               {subjectStats}/50
             </div>
-            
-            {/* Autocomplete Dropdown for Subject */}
-            {showAutocomplete && autocompleteField === 'subject' && (
-              <div
-                ref={autocompleteRef}
-                className="absolute z-50 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto min-w-[200px]"
-                style={{
-                  // Anchor to the subject input wrapper instead of viewport coords
-                  top: 'calc(100% + 6px)',
-                  left: '0px',
-                }}
-              >
-                {autocompleteSuggestions.map((suggestion, index) => {
-                  const variable = AVAILABLE_VARIABLES.find(v => 
-                    v.key === suggestion || v.label === suggestion
-                  ) || { key: suggestion, label: suggestion, icon: FileText };
-                  const Icon = variable.icon || FileText;
-                  
-                  return (
-                    <div
-                      key={suggestion}
-                      onClick={() => applySuggestion(suggestion, true)}
-                      className={`px-3 py-2 cursor-pointer flex items-center gap-2 hover:bg-blue-50 ${
-                        index === selectedSuggestionIndex ? 'bg-blue-100' : ''
-                      }`}
-                    >
-                      <Icon size={16} className="text-gray-500" />
-                      <span className="text-sm text-gray-700">{suggestion}</span>
-                      {variable.label !== suggestion && (
-                        <span className="text-xs text-gray-400 ml-auto">{variable.label}</span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -1049,37 +482,9 @@ Best regards,<br>
                   >
                     <Smartphone size={14} />
                   </button>
-                  <button
-                    type="button"
-                    onClick={refreshPreview}
-                    className="px-2 py-1 text-xs rounded transition-colors flex items-center gap-1 bg-transparent text-gray-600 hover:bg-gray-100 border-l border-gray-300 ml-1 pl-2"
-                    title="Refresh Preview (New Spintax Selection)"
-                  >
-                    <Undo2 size={14} />
-                    <span className="text-xs">Refresh</span>
-                  </button>
               </div>
             </>
           )}
-            <button
-              type="button"
-              onClick={handleSaveEmail}
-              disabled={isSaving || !campaignId}
-              className="px-3 py-1.5 text-xs rounded transition-colors flex items-center gap-1 bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              title={!campaignId ? 'Create a campaign first to save' : 'Save email template'}
-            >
-              {isSaving ? (
-                <>
-                  <Loader className="w-3 h-3 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <CheckCircle size={14} />
-                  Save
-                </>
-              )}
-            </button>
             <button
               type="button"
               onClick={() => {
@@ -1101,17 +506,6 @@ Best regards,<br>
             </button>
           </div>
         </div>
-        
-        {/* Save Message */}
-        {saveMessage && (
-          <div className={`mb-3 px-4 py-2 rounded-lg text-sm ${
-            saveMessage.type === 'success' 
-              ? 'bg-green-100 text-green-800 border border-green-200' 
-              : 'bg-red-100 text-red-800 border border-red-200'
-          }`}>
-            {saveMessage.text}
-          </div>
-        )}
 
         {!showPreview ? (
           <>
@@ -1359,12 +753,9 @@ Best regards,<br>
                   ref={editorRef}
                   contentEditable
                   onInput={handleEditorChange}
-                  onKeyDown={(e) => handleAutocompleteKeyDown(e, false)}
                   onBlur={() => {
                     setIsEditorFocused(false);
                     handleEditorChange();
-                    // Delay hiding autocomplete to allow clicking on it
-                    setTimeout(() => setShowAutocomplete(false), 200);
                   }}
                   onFocus={() => setIsEditorFocused(true)}
                   className={`min-h-[350px] p-4 text-sm text-gray-700 focus:outline-none ${
@@ -1376,41 +767,28 @@ Best regards,<br>
 Use the Variables button to insert personalization variables like {{firstName}}, {{company}}, etc."
                 />
                 
-                {/* Autocomplete Dropdown for Editor */}
-                {showAutocomplete && autocompleteField === 'body' && (
-                  <div
-                    ref={autocompleteRef}
-                    className="absolute z-50 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto min-w-[200px]"
-                    style={{
-                      top: `${autocompletePosition.top}px`,
-                      left: `${autocompletePosition.left}px`,
-                      position: 'absolute'
-                    }}
+                {/* AI Writing Assistant - Floating Button */}
+                <div className="absolute bottom-4 right-4 z-10">
+                  <button
+                    type="button"
+                    onClick={handleAIWriting}
+                    disabled={isAIGenerating}
+                    className="px-4 py-2.5 text-sm bg-white/80 backdrop-blur-md border border-purple-200/50 rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white/90 hover:border-purple-300/70 group"
+                    title="AI Writing Assistant"
                   >
-                    {autocompleteSuggestions.map((suggestion, index) => {
-                      const variable = AVAILABLE_VARIABLES.find(v => 
-                        v.key === suggestion || v.label === suggestion
-                      ) || { key: suggestion, label: suggestion, icon: FileText };
-                      const Icon = variable.icon || FileText;
-                      
-                      return (
-                        <div
-                          key={suggestion}
-                          onClick={() => applySuggestion(suggestion, false)}
-                          className={`px-3 py-2 cursor-pointer flex items-center gap-2 hover:bg-blue-50 ${
-                            index === selectedSuggestionIndex ? 'bg-blue-100' : ''
-                          }`}
-                        >
-                          <Icon size={16} className="text-gray-500" />
-                          <span className="text-sm text-gray-700">{suggestion}</span>
-                          {variable.label !== suggestion && (
-                            <span className="text-xs text-gray-400 ml-auto">{variable.label}</span>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                    {isAIGenerating ? (
+                      <>
+                        <Loader size={16} className="animate-spin text-purple-600" />
+                        <span className="text-gray-700 font-medium">Generating...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={16} className="text-purple-600 group-hover:scale-110 transition-transform" />
+                        <span className="text-gray-700 font-medium">AI Writing</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </>
@@ -1637,58 +1015,6 @@ Use the Variables button to insert personalization variables like {{firstName}},
                     </div>
                   </div>
                 )}
-
-                {/* Full Email Preview */}
-                <div className="w-full max-w-4xl bg-white rounded-lg shadow-lg overflow-hidden border border-gray-200 mt-6">
-                  <div className="bg-gray-50 border-b border-gray-200 px-6 py-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900">Email Preview</h3>
-                        {previewData?.lead && (
-                          <p className="text-xs text-gray-500 mt-1">
-                            Using sample lead: <strong>{previewData.lead.firstName} {previewData.lead.lastName}</strong> at <strong>{previewData.lead.companyName}</strong>
-                          </p>
-                        )}
-                      </div>
-                      {previewLoading ? (
-                        <div className="flex items-center gap-2 text-xs text-gray-600">
-                          <Loader size={14} className="animate-spin" />
-                          Loading...
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={refreshPreview}
-                          className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center gap-2"
-                          title="Refresh with new sample lead"
-                        >
-                          <Undo2 size={14} />
-                          Refresh Preview
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="p-6">
-                    {previewLoading ? (
-                      <div className="flex items-center justify-center py-12">
-                        <Loader size={24} className="animate-spin text-blue-600" />
-                        <span className="ml-3 text-gray-600">Loading preview with sample lead data...</span>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="mb-4 pb-4 border-b border-gray-200">
-                          <div className="text-xs text-gray-500 mb-1">Subject:</div>
-                          <div className="text-base font-semibold text-gray-900">{getPreviewSubject() || '(No subject)'}</div>
-                        </div>
-                        <div className="text-xs text-gray-500 mb-2">Body:</div>
-                        <div 
-                          className="prose prose-sm max-w-none text-gray-700"
-                          dangerouslySetInnerHTML={{ __html: getPreviewContent() || '<p>No content yet</p>' }}
-                        />
-                      </>
-                    )}
-                  </div>
-                </div>
               </div>
             )}
 
@@ -1867,12 +1193,15 @@ Use the Variables button to insert personalization variables like {{firstName}},
         ) : null}
 
         {/* AI Feedback Panel */}
-        {showAIFeedback && (aiFeedback.subject.length > 0 || aiFeedback.content.length > 0) && (
+        {showAIFeedback && (aiFeedback.subject.length > 0 || aiFeedback.content.length > 0 || isAIGenerating) && (
           <div className="mt-3 border border-purple-200 rounded-lg bg-gradient-to-br from-purple-50 to-blue-50 p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <Sparkles size={16} className="text-purple-600" />
                 <h4 className="text-sm font-semibold text-gray-800">AI Writing Assistant</h4>
+                {isAIGenerating && (
+                  <Loader size={14} className="animate-spin text-purple-600" />
+                )}
               </div>
               <button
                 onClick={() => setShowAIFeedback(false)}

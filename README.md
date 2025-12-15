@@ -2,6 +2,37 @@
 
 An AI-powered microservices platform for B2B cold email outreach campaigns, featuring automated lead generation, intelligent email composition, and comprehensive campaign management.
 
+## 🛠 Debugging & Local Access (GKE)
+
+If you need to inspect the internal database or RabbitMQ queues while running on GKE, use these commands to forward the ports to your local machine.
+
+### 1. Connect to RabbitMQ Dashboard
+Open a terminal and run:
+```bash
+kubectl port-forward -n deps-lead-svc svc/rabbitmq 15672:15672
+```
+Then visit: [http://localhost:15672](http://localhost:15672) (User/Pass: `guest`/`guest`)
+
+### 2. Connect to Postgres Database
+Open a terminal and run:
+```bash
+kubectl port-forward -n deps-lead-svc svc/postgres-service 5432:5432
+```
+Then connect using any DB client (DBeaver, TablePlus):
+- **Host:** `localhost`
+- **Port:** `5432`
+- **User:** `postgres`
+- **Pass:** `postgres`
+- **Database:** `outreachdb`
+
+### 3. Verify Deployment & Images
+To check that your services are running and using the correct Harbor images, run:
+```bash
+kubectl get deployments -n deps-lead-svc -o custom-columns='NAME:.metadata.name,IMAGE:.spec.template.spec.containers[0].image'
+```
+
+---
+
 ## System Architecture
 
 ```plantuml
@@ -189,6 +220,46 @@ See [db/schema.sql](db/schema.sql) for the complete database schema including:
 - Campaign management and sequences
 - Email sending and event tracking
 
+## CI/CD Pipeline
+
+The project uses GitHub Actions for automated build and deployment:
+
+### CI Workflow
+- **Trigger**: Push to `main` branch
+- **Actions**:
+  - Builds all Docker images (auth-svc, campaign-svc, lead-svc, ai-svc, frontend)
+  - Pushes images to Harbor registry: `harbor.javajon-gke.duckdns.org/library`
+
+### CD Workflow
+- **Trigger**: After successful CI workflow completion or manual dispatch
+- **Actions**:
+  - Connects to GKE cluster using kubeconfig
+  - Deploys Kubernetes manifests from `infra/k8s/`
+  - Updates deployment images to latest commit SHA
+
+### Setting Up GitHub Secrets
+
+1. **Create KUBECONFIG_B64 Secret**:
+   ```bash
+   # Base64 encode your GKE kubeconfig file
+   cat ~/.kube/gke-kubeconfig.yaml | base64 | pbcopy  # macOS
+   # or
+   cat ~/.kube/gke-kubeconfig.yaml | base64 -w 0      # Linux
+   ```
+   
+   Then in GitHub:
+   - Go to: Settings → Secrets and variables → Actions
+   - Click "New repository secret"
+   - Name: `KUBECONFIG_B64`
+   - Value: Paste the base64-encoded kubeconfig
+
+2. **Required Secrets**:
+   - `KUBECONFIG_B64`: Base64-encoded GKE kubeconfig file
+   - `HARBOR_USERNAME`: Harbor registry username
+   - `HARBOR_PASSWORD`: Harbor registry password
+   - `REACT_APP_AUTH_URL`: Frontend auth service URL (optional)
+   - `REACT_APP_API_URL`: Frontend API service URL (optional)
+
 ## Kubernetes Deployment
 
 ### Quick Deploy (Local K8s)
@@ -204,32 +275,51 @@ For teammates running this for the first time:
 
 3.  Access the app at **[http://localhost](http://localhost)**.
 
-### Quick Deploy to Kubernetes
+### Production Deployment (GKE)
 
-For production deployment on GKE, see the [Kubernetes Configuration Guide](infra/k8s/README.md).
+Deployment to GKE is automated via GitHub Actions CD workflow. To deploy manually:
 
-1. **Create namespace and apply ConfigMap/Secrets**
+1. **Verify you have kubeconfig configured**:
+   ```bash
+   kubectl config current-context
+   kubectl get nodes
+   ```
+
+2. **Create namespace and apply ConfigMap/Secrets**:
    ```bash
    kubectl apply -f infra/k8s/namespace.yaml
    kubectl apply -f infra/k8s/configmap.yaml
    
-   # Create secrets (see infra/k8s/README.md for details)
-   kubectl apply -f infra/k8s/secrets.yaml
-   kubectl apply -f gke-harbor-secret.yaml -n deps-lead-svc
+   # Create Harbor image pull secret
+   kubectl create secret docker-registry harbor-registry-secret \
+     --docker-server=harbor.javajon-gke.duckdns.org \
+     --docker-username=<your-harbor-username> \
+     --docker-password=<your-harbor-password> \
+     --namespace=deps-lead-svc
    ```
 
-2. **Deploy services**
+3. **Deploy services**:
    ```bash
    cd infra/k8s
-   kubectl apply -f postgres-deploy-k8s.yaml
-   kubectl apply -f auth-svc-deploy-k8s.yaml
-   kubectl apply -f lead-deploy-k8s.yaml
-   kubectl apply -f frontend-deploy-k8s.yaml
+   kubectl apply -f postgres-deploy-k8s.yaml -n deps-lead-svc
+   kubectl apply -f rabbitmq-deploy-k8s.yaml -n deps-lead-svc
+   kubectl apply -f auth-svc-deploy-k8s.yaml -n deps-lead-svc
+   kubectl apply -f lead-deploy-k8s.yaml -n deps-lead-svc
+   kubectl apply -f frontend-deploy-k8s.yaml -n deps-lead-svc
    ```
 
-3. **Verify deployment**
+4. **Update deployment images** (if deploying manually):
+   ```bash
+   # Replace <COMMIT_SHA> with your image tag
+   kubectl set image deployment/auth-deployment \
+     auth-svc=harbor.javajon-gke.duckdns.org/library/auth-svc:<COMMIT_SHA> \
+     -n deps-lead-svc
+   ```
+
+5. **Verify deployment**:
    ```bash
    kubectl get pods -n deps-lead-svc
+   kubectl get deployments -n deps-lead-svc
    kubectl get svc -n deps-lead-svc
    ```
 
@@ -242,14 +332,16 @@ For production deployment on GKE, see the [Kubernetes Configuration Guide](infra
 - ✅ Add the readme
 - ✅ Update readme with PlantUML diagram of system components
 - ⬜ Add to readme AI citation(s)
-- ⬜ Update readme with this task list
-- ⬜ Update readme database instructions
-- ⬜ Pushing images to Harbor on GKE
-- ⬜ Secret for Harbor image container pulls
-- ⬜ Add namespace(s) to GKE cluster
-- ⬜ Deploy K8s manifests to GKE cluster
-- ⬜ Integration test on GKE - ensuring emails are sent
-- ⬜ Use GitHub Secrets and K8s Secrets - No secrets in the repo
+- ✅ Update readme with this task list
+- ✅ Update readme database instructions
+- ✅ Figure out port-forward with Postgres on GKE to connect local code to DB
+- ✅ Figure out port-forward with RabbitMQ on GKE to connect local code to DB
+- ✅ Pushing images to Harbor on GKE
+- ✅ Secret for Harbor image container pulls
+- ✅ Add namespace(s) to GKE cluster
+- ✅ Deploy K8s manifests to GKE cluster
+- ✅ Integration test on GKE - ensuring emails are sent
+- ✅ Use GitHub Secrets and K8s Secrets - No secrets in the repo
 - ⬜ 80% unit test coverage
 
 ### In Progress
@@ -257,6 +349,7 @@ For production deployment on GKE, see the [Kubernetes Configuration Guide](infra
 - Obtain data from a public API (EC)
 - CD pulls all container images from Harbor as well as all YAMLS on GKE (EC)
 - Bug with emails (TM)
+- - ⬜ 80% unit test coverage (EC)
 - Can't connect to Postgres using psql - why? (JJ)
 
 ### Completed
@@ -268,9 +361,14 @@ For production deployment on GKE, see the [Kubernetes Configuration Guide](infra
 - ✅ AI integration
 - ✅ Use K8s ConfigMaps for non-secret environment variables
 - ✅ Add ingress to access user interface
+- ⬜ Secret for Harbor image container pulls
 - - ⬜ Figure out port-forward with Postgres on GKE to connect local code to DB (DS)
 - ⬜ Figure out port-forward with RabbitMQ on GKE to connect local code to DB (DS)
-
+- ⬜ Add namespace(s) to GKE cluster
+- - ⬜ Use GitHub Secrets and K8s Secrets - No secrets in the repo
+- ⬜ Deploy K8s manifests to GKE cluster
+  -  ⬜ Pushing images to Harbor on GKE
+ -  
 ### Maybe Later
 - Helm chart for deployment
 

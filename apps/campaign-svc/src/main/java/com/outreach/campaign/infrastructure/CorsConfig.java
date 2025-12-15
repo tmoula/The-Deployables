@@ -1,20 +1,25 @@
 package com.outreach.campaign.infrastructure;
 
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.web.servlet.config.annotation.CorsRegistry;
-import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
-public class CorsConfig implements WebMvcConfigurer {
-    @Override
-    public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/api/**")
-                .allowedOrigins("http://localhost:3000", "http://localhost:5173")
-                .allowedMethods("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD")
-                .allowedHeaders("*")
-                .allowCredentials(true)
-                .exposedHeaders("*")
-                .maxAge(3600);
+public class CorsConfig {
+
+    @Bean
+    public org.springframework.web.filter.CorsFilter corsFilter() {
+        org.springframework.web.cors.CorsConfiguration config = new org.springframework.web.cors.CorsConfiguration();
+        config.setAllowCredentials(true);
+        // Use allowedOriginPatterns to support wildcards with credentials
+        config.setAllowedOriginPatterns(java.util.Collections.singletonList("*"));
+        config.addAllowedHeader("*");
+        config.addAllowedMethod("*");
+        config.setMaxAge(3600L);
+
+        org.springframework.web.cors.UrlBasedCorsConfigurationSource source = new org.springframework.web.cors.UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+
+        return new org.springframework.web.filter.CorsFilter(source);
     }
 }
 

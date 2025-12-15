@@ -121,44 +121,20 @@ class RabbitMQAdapter:
             self.channel = self.connection.channel()
             
             # Declare email generation queues
-            self.channel.queue_declare(
-                queue=self.email_request_queue,
-                durable=True,
-                arguments={
-                    'x-dead-letter-exchange': '',
-                    'x-dead-letter-routing-key': f"{self.email_request_queue}.dlq",
-                    'x-message-ttl': 3600000  # 1 hour TTL
-                }
-            )
+            self.channel.queue_declare(queue=self.email_request_queue, durable=True)
             self.channel.queue_declare(queue=self.email_response_queue, durable=True)
             self.channel.queue_declare(queue=self.email_error_queue, durable=True)
             self.channel.queue_declare(queue=f"{self.email_request_queue}.dlq", durable=True)
             
             # Declare lead generation queues
-            self.channel.queue_declare(
-                queue=self.lead_request_queue,
-                durable=True,
-                arguments={
-                    'x-dead-letter-exchange': '',
-                    'x-dead-letter-routing-key': f"{self.lead_request_queue}.dlq",
-                    'x-message-ttl': 3600000  # 1 hour TTL
-                }
-            )
+            self.channel.queue_declare(queue=self.lead_request_queue, durable=True)
             self.channel.queue_declare(queue=self.lead_response_queue, durable=True)
             self.channel.queue_declare(queue=self.lead_error_queue, durable=True)
             self.channel.queue_declare(queue=f"{self.lead_request_queue}.dlq", durable=True)
             
             # Legacy queue support
             if self.request_queue != self.email_request_queue:
-                self.channel.queue_declare(
-                    queue=self.request_queue,
-                    durable=True,
-                    arguments={
-                        'x-dead-letter-exchange': '',
-                        'x-dead-letter-routing-key': self.dlq_queue,
-                        'x-message-ttl': 3600000
-                    }
-                )
+                self.channel.queue_declare(queue=self.request_queue, durable=True)
                 self.channel.queue_declare(queue=self.response_queue, durable=True)
                 self.channel.queue_declare(queue=self.error_queue, durable=True)
                 self.channel.queue_declare(queue=self.dlq_queue, durable=True)

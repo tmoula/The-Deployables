@@ -1,34 +1,34 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: lead-deployment
+  name: campaign-deployment
   namespace: deps-lead-svc
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app.kubernetes.io/name: LeadsApp
+      app: campaign-svc
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: LeadsApp
+        app: campaign-svc
     spec:
       imagePullSecrets:
       - name: harbor-registry-secret
       containers:
-      - name: lead-svc
-        image: harbor.javajon-gke.duckdns.org/deps/lead-svc:v1
-        imagePullPolicy: IfNotPresent
+      - name: campaign-svc
+        image: harbor.javajon-gke.duckdns.org/library/campaign-svc:v2
+        imagePullPolicy: Always
         ports:
         - containerPort: 8081
         env:
-        # Database Configuration from ConfigMap
+        - name: SERVER_PORT
+          value: "8081"
         - name: SPRING_DATASOURCE_URL
           valueFrom:
             configMapKeyRef:
               name: outreach-config
               key: SPRING_DATASOURCE_URL
-        # Database Credentials from Secret
         - name: SPRING_DATASOURCE_USERNAME
           valueFrom:
             secretKeyRef:
@@ -39,7 +39,6 @@ spec:
             secretKeyRef:
               name: outreach-secrets
               key: SPRING_DATASOURCE_PASSWORD
-        # RabbitMQ Configuration from ConfigMap
         - name: RABBITMQ_HOST
           valueFrom:
             configMapKeyRef:
@@ -50,26 +49,7 @@ spec:
             configMapKeyRef:
               name: outreach-config
               key: RABBITMQ_PORT
-        # RabbitMQ Credentials from Secret
-        - name: RABBITMQ_USER
-          valueFrom:
-            secretKeyRef:
-              name: outreach-secrets
-              key: RABBITMQ_USER
-        - name: RABBITMQ_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: outreach-secrets
-              key: RABBITMQ_PASSWORD
-        # AI Service URL from ConfigMap
-        - name: AI_SERVICE_URL
-          valueFrom:
-            configMapKeyRef:
-              name: outreach-config
-              key: AI_SERVICE_URL
-        # Server Port from ConfigMap
-        - name: SERVER_PORT
-          valueFrom:
-            configMapKeyRef:
-              name: outreach-config
-              key: LEAD_SERVICE_PORT
+        - name: SPRING_JPA_HIBERNATE_DDL_AUTO
+          value: "update"
+        - name: LEAD_SERVICE_URL
+          value: "http://lead-svc:8081"

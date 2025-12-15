@@ -25,7 +25,7 @@ import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/v1")
-@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:5173"}, allowCredentials = "true")
+// CrossOrigin handled globally in CorsConfig
 public class CampaignController {
     private final CampaignService campaignService;
     private final CsvParserService csvParserService;
@@ -55,7 +55,7 @@ public class CampaignController {
         this.objectMapper = new ObjectMapper();
     }
     
-    @GetMapping("/health")
+    @GetMapping("/campaigns/health")
     public Map<String, String> health() {
         return Map.of("status", "ok");
     }
