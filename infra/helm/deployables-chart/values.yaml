@@ -48,14 +48,6 @@ ai:
     type: ClusterIP
     port: 8090
 
-postgres:
-  replicaCount: 1
-  image:
-    repository: postgres
-    tag: "16"
-  storage:
-    size: 10Gi
-
 rabbitmq:
   replicaCount: 1
   image:
