@@ -1,15 +1,14 @@
-// In production, go through the same base URL as campaignApi (relative to ingress)
-// In local dev, fall back to localhost.
 const isProd = process.env.NODE_ENV === 'production';
 
+// Campaign Service (campaign-svc)
 const CAMPAIGN_BASE_URL = isProd
-  ? '/api/v1/campaigns'
+  ? (process.env.REACT_APP_CAMPAIGN_API_URL || '/api/v1/campaigns')
   : (process.env.REACT_APP_CAMPAIGN_API_URL || 'http://localhost:8081/api/v1/campaigns');
 
+// Lead Service (lead-svc)
 const LEAD_BASE_URL = isProd
-  ? '/api/v1'
+  ? (process.env.REACT_APP_LEAD_API_URL || '/api/v1')
   : (process.env.REACT_APP_LEAD_API_URL || 'http://localhost:8084/api/v1');
-
 // Debug: Log the API URLs being used (check browser console)
 if (process.env.NODE_ENV === 'development') {
   console.log('🔗 Campaign API Base URL:', CAMPAIGN_BASE_URL);
