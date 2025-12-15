@@ -222,19 +222,10 @@ Deployment to GKE is automated via GitHub Actions CD workflow. To deploy manuall
 
 
 ### Planned
-- ✅ Add the readme
-- ✅ Update readme with PlantUML diagram of system components
+-  Add the readme
 - ⬜ Add to readme AI citation(s)
-- ✅ Update readme with this task list
-- ✅ Update readme database instructions
-- ✅ Figure out port-forward with Postgres on GKE to connect local code to DB
-- ✅ Figure out port-forward with RabbitMQ on GKE to connect local code to DB
-- ✅ Pushing images to Harbor on GKE
-- ✅ Secret for Harbor image container pulls
-- ✅ Add namespace(s) to GKE cluster
-- ✅ Deploy K8s manifests to GKE cluster
-- ✅ Integration test on GKE - ensuring emails are sent
-- ✅ Use GitHub Secrets and K8s Secrets - No secrets in the repo
+-  Update readme with this task list
+- Update readme database instructions
 - ⬜ 80% unit test coverage
 
 ### In Progress
@@ -254,6 +245,7 @@ Deployment to GKE is automated via GitHub Actions CD workflow. To deploy manuall
 - ✅ AI integration
 - ✅ Use K8s ConfigMaps for non-secret environment variables
 - ✅ Add ingress to access user interface
+- - ✅ Update readme with PlantUML diagram of system components
 - ⬜ Secret for Harbor image container pulls
 - - ⬜ Figure out port-forward with Postgres on GKE to connect local code to DB (DS)
 - ⬜ Figure out port-forward with RabbitMQ on GKE to connect local code to DB (DS)
