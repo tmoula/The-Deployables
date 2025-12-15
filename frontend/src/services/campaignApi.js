@@ -138,25 +138,26 @@ export const campaignApi = {
   },
 
   // Preview email with sample lead data
-  async previewEmail(campaignId, subject, body, leadId = null, spintaxSeed = null) {
-    const url = new URL(`${CAMPAIGN_API_URL}/campaigns/${campaignId}/preview-email`);
+  
+async previewEmail(campaignId, subject, body, leadId = null, spintaxSeed = null) {
+    const params = new URLSearchParams();
     if (leadId) {
-      url.searchParams.append('leadId', leadId);
-    }
-    // Pass spintax seed for rotation - each preview refresh gets different spintax selections
-    // Ensure seed is an integer (backend expects Long, not decimal)
+      params.append('leadId', leadId);  
+    }  
     if (spintaxSeed !== null) {
       const integerSeed = Math.floor(spintaxSeed);
-      url.searchParams.append('spintaxSeed', integerSeed.toString());
-    }
-
+      params.append('spintaxSeed', integerSeed.toString());
+    }  
+    const url = `${CAMPAIGN_API_URL}/campaigns/${campaignId}/preview-email${
+      params.toString() ? `?${params.toString()}` : ''  
+    }`;  
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...getUserEmailHeaders()
+      headers: {      
+        'Content-Type': 'application/json',      
+        ...getUserEmailHeaders()    
       },
-      body: JSON.stringify({ subject, body })
+      body: JSON.stringify({ subject, body })  
     });
 
     if (!response.ok) {
