@@ -71,9 +71,11 @@ public class CampaignLeadService {
      * Get a random lead from a campaign for preview purposes
      * Prefers leads with CSV data (from CSV uploads) over AI-generated leads
      * @param campaignId The campaign ID
+     * @param seed Optional seed for reproducible randomness (e.g., spintaxSeed from frontend)
+     *              If provided, different seeds will select different leads
      * @return LeadEntity or null if no leads found
      */
-    public LeadEntity getRandomLeadForCampaign(Integer campaignId) {
+    public LeadEntity getRandomLeadForCampaign(Integer campaignId, Long seed) {
         List<CampaignLeadEntity> campaignLeads = campaignLeadRepository.findByCampaignId(campaignId);
         if (campaignLeads.isEmpty()) {
             return null;
@@ -88,21 +90,36 @@ public class CampaignLeadService {
             }
         }
         
+        // Use seed for reproducible contact selection (different seed = different contact)
+        // Use Java's Random properly - it's designed to handle seeds correctly
+        java.util.Random random = seed != null ? new java.util.Random(seed) : new java.util.Random();
+        
         // If we found leads with CSV data, use one of those
         if (!leadsWithCsvData.isEmpty()) {
-            int randomIndex = (int) (Math.random() * leadsWithCsvData.size());
-            System.out.println("getRandomLeadForCampaign - Using lead with CSV data: " + leadsWithCsvData.get(randomIndex).getId());
-            return leadsWithCsvData.get(randomIndex);
+            int selectedIndex = random.nextInt(leadsWithCsvData.size());
+            LeadEntity selectedLead = leadsWithCsvData.get(selectedIndex);
+            System.out.println("getRandomLeadForCampaign - Using lead with CSV data: ID=" + selectedLead.getId() + ", firstName=" + selectedLead.getFirstName() + ", email=" + (selectedLead.getEmail() != null ? selectedLead.getEmail() : "null") + " (seed: " + seed + ", index: " + selectedIndex + " of " + leadsWithCsvData.size() + ")");
+            return selectedLead;
         }
         
         // Otherwise, fall back to any lead
-        int randomIndex = (int) (Math.random() * campaignLeads.size());
-        CampaignLeadEntity campaignLead = campaignLeads.get(randomIndex);
+        int selectedIndex = random.nextInt(campaignLeads.size());
+        CampaignLeadEntity campaignLead = campaignLeads.get(selectedIndex);
         LeadEntity lead = leadRepository.findById(campaignLead.getLeadId()).orElse(null);
         if (lead != null) {
-            System.out.println("getRandomLeadForCampaign - Using lead without CSV data (fallback): " + lead.getId());
+            System.out.println("getRandomLeadForCampaign - Using lead without CSV data (fallback): ID=" + lead.getId() + ", firstName=" + lead.getFirstName() + " (seed: " + seed + ", index: " + selectedIndex + ")");
         }
         return lead;
+    }
+    
+    /**
+     * Get a random lead from a campaign for preview purposes (backwards compatible)
+     * Prefers leads with CSV data (from CSV uploads) over AI-generated leads
+     * @param campaignId The campaign ID
+     * @return LeadEntity or null if no leads found
+     */
+    public LeadEntity getRandomLeadForCampaign(Integer campaignId) {
+        return getRandomLeadForCampaign(campaignId, null);
     }
 
     /**

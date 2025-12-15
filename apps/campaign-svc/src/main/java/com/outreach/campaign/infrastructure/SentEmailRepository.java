@@ -11,5 +11,7 @@ public interface SentEmailRepository extends JpaRepository<SentEmailEntity, Inte
     List<SentEmailEntity> findByLeadId(Integer leadId);
     List<SentEmailEntity> findByStatus(String status);
     List<SentEmailEntity> findByCampaignIdAndStatus(Integer campaignId, String status);
+    
+    List<SentEmailEntity> findByCampaignIdAndLeadId(Integer campaignId, Integer leadId);
 }
 

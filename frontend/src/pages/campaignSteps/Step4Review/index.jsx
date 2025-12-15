@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
 import { Mail, Users, Clock, Calendar, Globe, Timer, ChevronRight, RefreshCw } from "lucide-react";
 import { campaignApi } from "../../../services/campaignApi";
+import DatePicker from "react-datepicker";
+import { format, setHours, setMinutes, startOfDay } from "date-fns";
+import "react-datepicker/dist/react-datepicker.css";
 
 export default function Step4Review({
   campaignName,
@@ -9,6 +12,7 @@ export default function Step4Review({
   emailSubject,
   emailContent,
   campaignSettings,
+  setCampaignSettings,
   campaignId,
   campaignContacts = []
 }) {
@@ -136,6 +140,39 @@ export default function Step4Review({
       return `${h} hour${h !== 1 ? 's' : ''}`;
     }
     return `${h}h ${m}m`;
+  };
+
+  // Helper to create a date with specific time for time picker
+  const createTimeDate = (timeString) => {
+    try {
+      const [hours, minutes] = (timeString || "09:00").split(':').map(Number);
+      return setMinutes(setHours(startOfDay(new Date()), hours), minutes);
+    } catch {
+      return setMinutes(setHours(startOfDay(new Date()), 9), 0);
+    }
+  };
+
+  // State for time picker
+  const [localStartTime, setLocalStartTime] = useState(() => 
+    createTimeDate(campaignSettings.startTime || "09:00")
+  );
+
+  // Update local time when campaignSettings changes
+  useEffect(() => {
+    if (campaignSettings.startTime) {
+      setLocalStartTime(createTimeDate(campaignSettings.startTime));
+    }
+  }, [campaignSettings.startTime]);
+
+  const handleStartTimeChange = (date) => {
+    if (date && setCampaignSettings) {
+      setLocalStartTime(date);
+      const timeString = format(date, "HH:mm");
+      setCampaignSettings({
+        ...campaignSettings,
+        startTime: timeString
+      });
+    }
   };
 
   const formatDate = (dateStr, timeStr) => {
@@ -400,13 +437,39 @@ export default function Step4Review({
         <h3 className="font-semibold text-gray-800 mb-4">Campaign Settings</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
-            <div className="flex items-center gap-2 text-gray-600 mb-1">
+            <div className="flex items-center gap-2 text-gray-600 mb-2">
               <Calendar size={16} />
-              <span className="text-sm font-medium">Start Date</span>
+              <span className="text-sm font-medium">Start Date & Time</span>
             </div>
-            <p className="text-sm text-gray-900">
-              {formatDate(campaignSettings.startDate, campaignSettings.startTime)}
-            </p>
+            <div className="space-y-2">
+              <p className="text-sm text-gray-700">
+                {campaignSettings.startDate ? formatDate(campaignSettings.startDate, campaignSettings.startTime) : "Not set"}
+              </p>
+              {setCampaignSettings ? (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <DatePicker
+                      selected={localStartTime}
+                      onChange={handleStartTimeChange}
+                      showTimeSelect
+                      showTimeSelectOnly
+                      timeIntervals={1}
+                      timeCaption="Time"
+                      dateFormat="h:mm aa"
+                      className="w-full max-w-[220px] border-2 border-blue-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-medium bg-white shadow-sm hover:border-blue-400 transition-colors cursor-pointer"
+                      placeholderText="Click to select time"
+                      wrapperClassName="w-full max-w-[220px]"
+                      minTime={startOfDay(new Date())}
+                      maxTime={setMinutes(setHours(startOfDay(new Date()), 23), 59)}
+                    />
+                    <Clock size={18} className="text-blue-600 flex-shrink-0" />
+                  </div>
+                  <span className="text-xs text-gray-500">Select any hour and minute (EST/EDT)</span>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-500 italic">Time picker not available</p>
+              )}
+            </div>
           </div>
           <div>
             <div className="flex items-center gap-2 text-gray-600 mb-1">

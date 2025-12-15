@@ -249,6 +249,20 @@ export const campaignApi = {
     const data = await response.json();
     console.log('📅 Campaign scheduled successfully:', data);
     return data;
-  }
+  },
+
+  async getCampaignStats(campaignId) {
+    const headers = getUserEmailHeaders();
+    const response = await fetch(`${CAMPAIGN_API_URL}/campaigns/${campaignId}/stats`, {
+      headers: headers
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: response.statusText }));
+      throw new Error(error.error || `Failed to fetch campaign stats: ${response.statusText}`);
+    }
+
+    return response.json();
+  },
 };
 

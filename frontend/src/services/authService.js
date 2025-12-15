@@ -1,5 +1,5 @@
 // Authentication Service - Handles all auth-related API calls
-const AUTH_BASE_URL = process.env.REACT_APP_AUTH_URL || '/api/v1/auth';
+const AUTH_BASE_URL = process.env.REACT_APP_AUTH_URL || 'http://localhost:8083/api/v1/auth';
 
 // Debug logging in development
 if (process.env.NODE_ENV === 'development') {

@@ -112,14 +112,15 @@ public class CampaignExecutionService {
                     continue;
                 }
                 
-                // Check if email already sent to this lead
-                List<SentEmailEntity> existing = sentEmailRepository.findByCampaignIdAndStatus(
-                    campaignId, "sent");
-                boolean alreadySent = existing.stream()
-                    .anyMatch(e -> e.getLeadId().equals(lead.getId()));
+                // Check if email already sent or queued for this lead
+                // This prevents duplicate emails if campaign is executed multiple times
+                List<SentEmailEntity> existingSent = sentEmailRepository.findByCampaignIdAndLeadId(
+                    campaignId, lead.getId());
+                boolean alreadySentOrQueued = existingSent.stream()
+                    .anyMatch(e -> "sent".equals(e.getStatus()) || "queued".equals(e.getStatus()));
                 
-                if (alreadySent) {
-                    System.out.println("EXECUTE CAMPAIGN - Skipping lead " + lead.getId() + " (already sent)");
+                if (alreadySentOrQueued) {
+                    System.out.println("EXECUTE CAMPAIGN - Skipping lead " + lead.getId() + " (email already sent or queued)");
                     continue;
                 }
                 

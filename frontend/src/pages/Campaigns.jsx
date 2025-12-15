@@ -63,6 +63,7 @@ export default function Campaigns() {
   });
   const [openMenuId, setOpenMenuId] = useState(null);
   const [editingCampaignId, setEditingCampaignId] = useState(null);
+  const [campaignStats, setCampaignStats] = useState({}); // Map of campaignId -> stats
 
   // Load contacts when entering Step 2 or Step 4
   useEffect(() => {
@@ -105,6 +106,42 @@ export default function Campaigns() {
     const interval = setInterval(checkBackend, 10000);
     return () => clearInterval(interval);
   }, []);
+
+  // Poll for campaign stats for running/scheduled campaigns
+  useEffect(() => {
+    const pollStats = async () => {
+      const campaignsToPoll = campaigns.filter(c => {
+        const status = (c.status?.toString() || "DRAFT").toLowerCase();
+        return status === "running" || status === "scheduled";
+      });
+
+      if (campaignsToPoll.length === 0) return;
+
+      const statsPromises = campaignsToPoll.map(async (campaign) => {
+        try {
+          const stats = await campaignApi.getCampaignStats(campaign.id);
+          return { campaignId: campaign.id, stats };
+        } catch (error) {
+          console.error(`Failed to fetch stats for campaign ${campaign.id}:`, error);
+          return null;
+        }
+      });
+
+      const results = await Promise.all(statsPromises);
+      const newStats = {};
+      results.forEach(result => {
+        if (result) {
+          newStats[result.campaignId] = result.stats;
+        }
+      });
+
+      setCampaignStats(prev => ({ ...prev, ...newStats }));
+    };
+
+    pollStats();
+    const interval = setInterval(pollStats, 3000); // Poll every 3 seconds for running campaigns
+    return () => clearInterval(interval);
+  }, [campaigns]);
 
   const loadCampaigns = async () => {
     try {
@@ -774,6 +811,7 @@ export default function Campaigns() {
                   emailSubject={emailSubject}
                   emailContent={emailContent}
                   campaignSettings={campaignSettings}
+                  setCampaignSettings={setCampaignSettings}
                   campaignId={editingCampaignId ? parseInt(editingCampaignId) : (selectedCampaign ? (parseInt(selectedCampaign.id) || null) : null)}
                   campaignContacts={campaignContacts}
                 />
@@ -1220,30 +1258,49 @@ export default function Campaigns() {
       ) : (
         <div className="space-y-4">
           {filteredCampaigns.map((campaign) => {
-            const status = (
-              campaign.status?.toString() || "DRAFT"
-            ).toLowerCase();
+            // Get real-time stats if available
+            const stats = campaignStats[campaign.id];
+            const actualStatus = stats?.status || campaign.status?.toString() || "DRAFT";
+            const status = actualStatus.toLowerCase();
             const isPaused = status === "paused";
-            const isCompleted = status === "completed";
+            const isCompleted = status === "completed" || status === "finished";
             const isRunning = status === "running";
+            const isScheduled = status === "scheduled";
+
+            // Use stats if available, otherwise use campaign data
+            const sentCount = stats?.sentCount ?? campaign.sentCount ?? 0;
+            const failedCount = stats?.failedCount ?? 0;
+            const queuedCount = stats?.queuedCount ?? 0;
+            const totalLeads = stats?.totalLeads ?? campaign.totalLeads ?? 0;
+            const pendingCount = stats?.pendingCount ?? (totalLeads - sentCount - failedCount - queuedCount);
 
             const openedPercentage = calculatePercentage(
               campaign.openedCount,
-              campaign.sentCount
+              sentCount
             );
             const clickedPercentage = 0; // Placeholder
             const repliedPercentage = calculatePercentage(
               campaign.repliedCount,
-              campaign.sentCount
+              sentCount
             );
             const campaignProgress =
-              campaign.totalLeads > 0
-                ? Math.round(
-                    (campaign.sentCount /
-                      campaign.totalLeads) *
-                      100
-                  )
+              totalLeads > 0
+                ? Math.round((sentCount / totalLeads) * 100)
                 : 0;
+            
+            // Format timestamps
+            const formatTimestamp = (timestamp) => {
+              if (!timestamp) return null;
+              try {
+                return format(new Date(timestamp), 'MMM dd, yyyy HH:mm:ss');
+              } catch {
+                return timestamp;
+              }
+            };
+            
+            const firstSentAt = formatTimestamp(stats?.firstSentAt);
+            const lastSentAt = formatTimestamp(stats?.lastSentAt);
+            const startAt = formatTimestamp(stats?.startAt);
 
             return (
               <div
@@ -1285,20 +1342,59 @@ export default function Campaigns() {
                         <h3 className="text-lg font-semibold text-gray-900 mb-1">
                           {campaign.name || "Unnamed Campaign"}
                         </h3>
-                        <div className="flex items-center gap-2 text-sm text-gray-600">
-                          <span className="capitalize">
-                            {status}
+                        <div className="flex items-center gap-2 text-sm text-gray-600 flex-wrap">
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            isCompleted ? 'bg-green-100 text-green-800' :
+                            isRunning ? 'bg-blue-100 text-blue-800 animate-pulse' :
+                            isScheduled ? 'bg-yellow-100 text-yellow-800' :
+                            isPaused ? 'bg-gray-100 text-gray-800' :
+                            'bg-gray-100 text-gray-600'
+                          }`}>
+                            {isRunning ? '🔄 Running' :
+                             isScheduled ? '⏰ Scheduled' :
+                             isCompleted ? '✅ Completed' :
+                             isPaused ? '⏸️ Paused' :
+                             '📝 ' + status.charAt(0).toUpperCase() + status.slice(1)}
                           </span>
-                          <span>•</span>
-                          <span>
-                            Created At:{" "}
-                            {campaign.createdAt ? format(new Date(campaign.createdAt), 'MMM dd, yyyy') : 'N/A'}
-                          </span>
-                          {campaign.totalLeads > 0 && (
+                          {startAt && (
                             <>
                               <span>•</span>
-                              <span>
-                                {campaign.totalLeads} leads
+                              <span className="text-xs">
+                                Starts: {startAt}
+                              </span>
+                            </>
+                          )}
+                          {isRunning && firstSentAt && (
+                            <>
+                              <span>•</span>
+                              <span className="text-xs text-blue-600">
+                                Started: {firstSentAt}
+                              </span>
+                            </>
+                          )}
+                          {isCompleted && lastSentAt && (
+                            <>
+                              <span>•</span>
+                              <span className="text-xs text-green-600">
+                                Completed: {lastSentAt}
+                              </span>
+                            </>
+                          )}
+                          {totalLeads > 0 && (
+                            <>
+                              <span>•</span>
+                              <span className="font-medium">
+                                {sentCount} / {totalLeads} sent
+                                {failedCount > 0 && <span className="text-red-600"> ({failedCount} failed)</span>}
+                                {queuedCount > 0 && <span className="text-yellow-600"> ({queuedCount} queued)</span>}
+                              </span>
+                            </>
+                          )}
+                          {isRunning && (
+                            <>
+                              <span>•</span>
+                              <span className="text-blue-600 font-medium animate-pulse">
+                                ⚡ In Progress...
                               </span>
                             </>
                           )}

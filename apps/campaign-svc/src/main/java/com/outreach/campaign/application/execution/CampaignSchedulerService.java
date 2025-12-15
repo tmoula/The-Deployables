@@ -47,30 +47,49 @@ public class CampaignSchedulerService {
                 // campaign.getStartAt() is stored in UTC
                 if (campaign.getStartAt() != null) {
                     LocalDateTime startAt = campaign.getStartAt();
-                    // Compare UTC times
-                    if (startAt.isBefore(now) || startAt.isEqual(now)) {
+                    // Compare UTC times - execute if start time has passed or is within 10 seconds
+                    // The scheduler runs every minute, so we allow a small window to catch campaigns
+                    // that should have started in the last minute
+                    long secondsDiff = java.time.Duration.between(startAt, now).getSeconds();
+                    boolean shouldExecute = secondsDiff >= 0 && secondsDiff <= 60; // Within last minute
                     
+                    if (shouldExecute) {
+                        // CRITICAL: Change status to "running" IMMEDIATELY to prevent duplicate executions
+                        // This must happen synchronously before starting the thread
+                        campaign.setStatus("running");
+                        campaignRepository.save(campaign);
+                        
                         System.out.println("SCHEDULER - Campaign " + campaign.getId() + " is ready to execute (start_at UTC: " + 
                             startAt + ", now UTC: " + now + ")");
+                        System.out.println("SCHEDULER - Changed campaign status to 'running' to prevent duplicate execution");
                     
-                    // Execute the campaign in a separate thread to avoid blocking
-                    new Thread(() -> {
-                        try {
-                            campaignExecutionService.executeCampaign(campaign.getId());
-                        } catch (Exception e) {
-                            System.err.println("SCHEDULER - Error executing campaign " + campaign.getId() + ": " + e.getMessage());
-                            e.printStackTrace();
-                            // Mark campaign as failed
-                            campaign.setStatus("failed");
-                            campaignRepository.save(campaign);
-                        }
-                    }).start();
+                        // Execute the campaign in a separate thread to avoid blocking
+                        new Thread(() -> {
+                            try {
+                                campaignExecutionService.executeCampaign(campaign.getId());
+                            } catch (Exception e) {
+                                System.err.println("SCHEDULER - Error executing campaign " + campaign.getId() + ": " + e.getMessage());
+                                e.printStackTrace();
+                                // Mark campaign as failed
+                                try {
+                                    CampaignEntity failedCampaign = campaignRepository.findById(campaign.getId()).orElse(null);
+                                    if (failedCampaign != null) {
+                                        failedCampaign.setStatus("failed");
+                                        campaignRepository.save(failedCampaign);
+                                    }
+                                } catch (Exception saveError) {
+                                    System.err.println("SCHEDULER - Error saving failed status: " + saveError.getMessage());
+                                }
+                            }
+                        }).start();
                     } else {
                         // Log when campaign will execute (for debugging)
                         if (startAt.isBefore(now.plusMinutes(5))) {
-                            System.out.println("SCHEDULER - Campaign " + campaign.getId() + " will execute soon (start_at UTC: " + 
-                                startAt + ", now UTC: " + now + ", wait: " + 
-                                java.time.Duration.between(now, startAt).toMinutes() + " minutes)");
+                            long minutesUntil = java.time.Duration.between(now, startAt).toMinutes();
+                            long secondsUntil = java.time.Duration.between(now, startAt).getSeconds() % 60;
+                            System.out.println("SCHEDULER - Campaign " + campaign.getId() + " will execute in " + 
+                                minutesUntil + " minutes " + secondsUntil + " seconds (start_at UTC: " + 
+                                startAt + ", now UTC: " + now + ")");
                         }
                     }
                 }

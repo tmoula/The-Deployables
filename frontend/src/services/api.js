@@ -1,7 +1,7 @@
 // Campaign Service (campaign-svc) - port 8081
-const CAMPAIGN_BASE_URL = process.env.REACT_APP_CAMPAIGN_API_URL || '/api/v1/campaigns';
+const CAMPAIGN_BASE_URL = process.env.REACT_APP_CAMPAIGN_API_URL || 'http://localhost:8081/api/v1/campaigns';
 // Lead Service (lead-svc) - port 8084
-const LEAD_BASE_URL = process.env.REACT_APP_LEAD_API_URL || '/api/v1';
+const LEAD_BASE_URL = process.env.REACT_APP_LEAD_API_URL || 'http://localhost:8084/api/v1';
 
 // Debug: Log the API URLs being used (check browser console)
 if (process.env.NODE_ENV === 'development') {

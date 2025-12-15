@@ -8,15 +8,20 @@ import com.outreach.campaign.application.lead.CampaignLeadService;
 import com.outreach.campaign.application.rendering.EmailRenderService;
 import com.outreach.campaign.application.common.UserContextService;
 import com.outreach.campaign.domain.entities.LeadEntity;
+import com.outreach.campaign.domain.entities.SentEmailEntity;
+import com.outreach.campaign.infrastructure.SentEmailRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.outreach.campaign.domain.models.Campaign;
 import com.outreach.campaign.domain.models.Lead;
 import com.outreach.campaign.infrastructure.LeadRepository;
+import com.outreach.campaign.infrastructure.CampaignRepository;
+import com.outreach.campaign.domain.entities.CampaignEntity;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -34,6 +39,8 @@ public class CampaignController {
     private final LeadRepository leadRepository;
     private final CampaignLeadService campaignLeadService;
     private final EmailRenderService emailRenderService;
+    private final SentEmailRepository sentEmailRepository;
+    private final CampaignRepository campaignRepository;
     private final ObjectMapper objectMapper;
     
     public CampaignController(
@@ -43,7 +50,9 @@ public class CampaignController {
         UserContextService userContextService,
         LeadRepository leadRepository,
         CampaignLeadService campaignLeadService,
-        EmailRenderService emailRenderService
+        EmailRenderService emailRenderService,
+        SentEmailRepository sentEmailRepository,
+        CampaignRepository campaignRepository
     ) {
         this.campaignService = campaignService;
         this.csvParserService = csvParserService;
@@ -52,6 +61,8 @@ public class CampaignController {
         this.leadRepository = leadRepository;
         this.campaignLeadService = campaignLeadService;
         this.emailRenderService = emailRenderService;
+        this.sentEmailRepository = sentEmailRepository;
+        this.campaignRepository = campaignRepository;
         this.objectMapper = new ObjectMapper();
     }
     
@@ -399,10 +410,12 @@ public class CampaignController {
                 }
             } else {
                 // Always use random lead selection for preview (different lead each refresh)
+                // Use spintaxSeed to ensure different contacts are selected on each refresh
                 // This gives users variety when testing their email templates
-                lead = campaignLeadService.getRandomLeadForCampaign(campaignId);
+                long seedForContactSelection = (spintaxSeed != null) ? spintaxSeed : System.currentTimeMillis();
+                lead = campaignLeadService.getRandomLeadForCampaign(campaignId, seedForContactSelection);
                 if (lead != null) {
-                    System.out.println("PREVIEW EMAIL - Using random lead for preview: " + lead.getId());
+                    System.out.println("PREVIEW EMAIL - Using random lead for preview: " + lead.getId() + " (selected using seed: " + seedForContactSelection + ")");
                 } else {
                     System.out.println("PREVIEW EMAIL - No leads found for campaign " + campaignId);
                 }
@@ -574,6 +587,78 @@ public class CampaignController {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of("error", "Failed to schedule campaign: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * Get campaign statistics (sent, failed, queued counts, status, timestamps)
+     */
+    @GetMapping("/campaigns/{id}/stats")
+    public ResponseEntity<?> getCampaignStats(
+            @PathVariable Integer id,
+            @RequestHeader(value = "X-User-Email", required = false) String userEmail) {
+        try {
+            Integer userId = userContextService.getUserIdFromEmail(userEmail);
+            if (userId == null) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "User not found"));
+            }
+            
+            Optional<CampaignEntity> campaignEntityOpt = campaignRepository.findById(id);
+            if (campaignEntityOpt.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("error", "Campaign not found"));
+            }
+            
+            CampaignEntity campaignEntity = campaignEntityOpt.get();
+            
+            // Verify ownership
+            if (!campaignEntity.getUserId().equals(userId)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", "Access denied"));
+            }
+            
+            // Get all sent emails for this campaign
+            List<SentEmailEntity> sentEmails = sentEmailRepository.findByCampaignId(id);
+            
+            long sentCount = sentEmails.stream().filter(e -> "sent".equals(e.getStatus())).count();
+            long failedCount = sentEmails.stream().filter(e -> "failed".equals(e.getStatus())).count();
+            long queuedCount = sentEmails.stream().filter(e -> "queued".equals(e.getStatus())).count();
+            
+            // Get first and last sent email timestamps
+            LocalDateTime firstSentAt = sentEmails.stream()
+                .filter(e -> e.getSentAt() != null)
+                .map(SentEmailEntity::getSentAt)
+                .min(LocalDateTime::compareTo)
+                .orElse(null);
+            
+            LocalDateTime lastSentAt = sentEmails.stream()
+                .filter(e -> e.getSentAt() != null)
+                .map(SentEmailEntity::getSentAt)
+                .max(LocalDateTime::compareTo)
+                .orElse(null);
+            
+            // Get total leads count
+            long totalLeads = campaignLeadService.getCampaignLeadCount(id);
+            
+            Map<String, Object> stats = new HashMap<>();
+            stats.put("campaignId", id);
+            stats.put("status", campaignEntity.getStatus());
+            stats.put("totalLeads", totalLeads);
+            stats.put("sentCount", sentCount);
+            stats.put("failedCount", failedCount);
+            stats.put("queuedCount", queuedCount);
+            stats.put("pendingCount", Math.max(0, totalLeads - sentCount - failedCount - queuedCount));
+            stats.put("firstSentAt", firstSentAt != null ? firstSentAt.toString() : null);
+            stats.put("lastSentAt", lastSentAt != null ? lastSentAt.toString() : null);
+            stats.put("startAt", campaignEntity.getStartAt() != null ? campaignEntity.getStartAt().toString() : null);
+            
+            return ResponseEntity.ok(stats);
+        } catch (Exception e) {
+            System.err.println("GET CAMPAIGN STATS - Error: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("error", "Failed to get campaign stats: " + e.getMessage()));
         }
     }
 }
