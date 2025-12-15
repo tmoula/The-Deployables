@@ -1,8 +1,0 @@
-apiVersion: v2
-name: deployables-chart
-description: Helm chart for The-Deployables stack (frontend, campaign-svc, lead-svc, auth-svc, db, rabbitmq)
-type: application
-version: 0.1.0
-appVersion: "1.0.0"
-
-
