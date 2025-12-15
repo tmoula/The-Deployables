@@ -35,12 +35,19 @@ public class EmailRenderService {
      */
     public String renderEmail(String template, LeadEntity lead, java.util.List<String> csvColumns, Long spintaxSeed) {
         if (template == null || template.isEmpty()) {
+            System.out.println("RENDER EMAIL - Template is null or empty, returning empty string");
             return "";
         }
         
         if (lead == null) {
             System.err.println("RENDER EMAIL - ERROR: Lead is null!");
             return template; // Return template as-is if no lead data
+        }
+        
+        // Handle null csvColumns
+        if (csvColumns == null) {
+            csvColumns = new ArrayList<>();
+            System.out.println("RENDER EMAIL - csvColumns was null, using empty list");
         }
         
         System.out.println("RENDER EMAIL - Template: " + template.substring(0, Math.min(100, template.length())));

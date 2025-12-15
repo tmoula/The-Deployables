@@ -448,10 +448,15 @@ public class CampaignController {
                 }
             } catch (Exception renderException) {
                 System.err.println("PREVIEW EMAIL - Error during email rendering: " + renderException.getMessage());
+                System.err.println("PREVIEW EMAIL - Render exception class: " + renderException.getClass().getName());
                 renderException.printStackTrace();
-                // Return template as-is if rendering fails
-                renderedSubject = subjectTemplate;
-                renderedBody = bodyTemplate;
+                // Include error in response for debugging
+                Map<String, Object> errorResponse = new HashMap<>();
+                errorResponse.put("error", "Failed to render email: " + renderException.getMessage());
+                errorResponse.put("originalSubject", subjectTemplate);
+                errorResponse.put("originalBody", bodyTemplate);
+                errorResponse.put("exception", renderException.getClass().getSimpleName());
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
             }
             
             // Parse CSV data to include in response for debugging
