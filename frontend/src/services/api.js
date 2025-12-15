@@ -14,26 +14,21 @@ if (process.env.NODE_ENV === 'development') {
 export const api = {
   // Health check (campaign service)
   async checkHealth() {
-  async checkHealth() {
-      try {
-        console.log('🩺 checkHealth calling:', `${CAMPAIGN_BASE_URL}/health`);
-        const response = await fetch(`${CAMPAIGN_BASE_URL}/health`, {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' }
-        });
-        console.log('🩺 checkHealth response:', response.status);
-        if (!response.ok) {
-          throw new Error(`Backend health check failed: ${response.status} ${response.statusText}`);
-        }
-        return response.json();
-      } catch (error) {
-        console.error('🩺 checkHealth error:', error);
-        if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-          throw new Error(`Cannot connect to campaign service at ${CAMPAIGN_BASE_URL}. Original error: ${error.message}`);
-        }
-        throw error;
+    try {
+      const response = await fetch(`${CAMPAIGN_BASE_URL}/health`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (!response.ok) {
+        throw new Error(`Backend health check failed: ${response.status} ${response.statusText}`);
       }
-    },
+      return response.json();
+    } catch (error) {
+      if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+        throw new Error(`Cannot connect to campaign service at ${CAMPAIGN_BASE_URL}. Make sure it's running on http://localhost:8081`);
+      }
+      throw error;
+    }
   },
 
   // Seller Profile (lead service)
