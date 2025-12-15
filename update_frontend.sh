@@ -7,6 +7,12 @@ PROJECT="deps"
 USER='robot$library+developer'
 PASS='c5d9eRvmIQlOiZCagsKZp4XAi3qwRAba'
 
+# Auto-detect GKE Config
+if [ -f "$HOME/Downloads/gke-kubeconfig.yaml" ]; then
+    echo "🌍 Found GKE Config! Using it..."
+    export KUBECONFIG=$HOME/Downloads/gke-kubeconfig.yaml
+fi
+
 echo "1. Logging in..."
 echo "$PASS" | docker login $REGISTRY -u "$USER" --password-stdin
 

@@ -2,6 +2,37 @@
 
 An AI-powered microservices platform for B2B cold email outreach campaigns, featuring automated lead generation, intelligent email composition, and comprehensive campaign management.
 
+## 🛠 Debugging & Local Access (GKE)
+
+If you need to inspect the internal database or RabbitMQ queues while running on GKE, use these commands to forward the ports to your local machine.
+
+### 1. Connect to RabbitMQ Dashboard
+Open a terminal and run:
+```bash
+kubectl port-forward -n deps-lead-svc svc/rabbitmq 15672:15672
+```
+Then visit: [http://localhost:15672](http://localhost:15672) (User/Pass: `guest`/`guest`)
+
+### 2. Connect to Postgres Database
+Open a terminal and run:
+```bash
+kubectl port-forward -n deps-lead-svc svc/postgres-service 5432:5432
+```
+Then connect using any DB client (DBeaver, TablePlus):
+- **Host:** `localhost`
+- **Port:** `5432`
+- **User:** `postgres`
+- **Pass:** `postgres`
+- **Database:** `outreachdb`
+
+### 3. Verify Deployment & Images
+To check that your services are running and using the correct Harbor images, run:
+```bash
+kubectl get deployments -n deps-lead-svc -o custom-columns='NAME:.metadata.name,IMAGE:.spec.template.spec.containers[0].image'
+```
+
+---
+
 ## System Architecture
 
 ```plantuml
@@ -301,9 +332,17 @@ Deployment to GKE is automated via GitHub Actions CD workflow. To deploy manuall
 - ✅ Add the readme
 - ✅ Update readme with PlantUML diagram of system components
 - ⬜ Add to readme AI citation(s)
-- ⬜ Update readme with this task list
-- ⬜ Update readme database instructions
-- ⬜ Integration test on GKE - ensuring emails are sent
+- ✅ Update readme with this task list
+- ✅ Update readme database instructions
+- ✅ Figure out port-forward with Postgres on GKE to connect local code to DB
+- ✅ Figure out port-forward with RabbitMQ on GKE to connect local code to DB
+- ✅ Pushing images to Harbor on GKE
+- ✅ Secret for Harbor image container pulls
+- ✅ Add namespace(s) to GKE cluster
+- ✅ Deploy K8s manifests to GKE cluster
+- ✅ Integration test on GKE - ensuring emails are sent
+- ✅ Use GitHub Secrets and K8s Secrets - No secrets in the repo
+- ⬜ 80% unit test coverage
 
 ### In Progress
 - CI builds and pushes all container images to Harbor on GKE (EC)
