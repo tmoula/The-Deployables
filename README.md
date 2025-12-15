@@ -55,14 +55,14 @@ actor User
 
 ' Frontend Layer
 package "Frontend Layer" {
-    component "React UI\n(Port 5173)" as UI <<frontend>>
+    component "React UI\n(Port 80/5173)" as UI <<frontend>>
 }
 
 ' API Gateway / Services Layer
 package "Microservices Layer" {
     component "Auth Service\n(Port 8083)" as AuthSvc <<service>>
     component "Campaign Service\n(Port 8081)" as CampaignSvc <<service>>
-    component "Lead Service\n(Port 8084)" as LeadSvc <<service>>
+    component "Lead Service\n(Port 8081)" as LeadSvc <<service>>
     component "AI Service\n(Port 8090)" as AISvc <<service>>
 }
 
@@ -88,58 +88,52 @@ cloud "Google Kubernetes Engine (GKE)" as GKE {
 ' User Interactions
 User --> UI : HTTPS
 
-' Frontend to Services
-UI --> AuthSvc : Authentication\n& User Management
-UI --> CampaignSvc : Campaign\nManagement
-UI --> LeadSvc : Lead\nManagement
+' Frontend to Services (via Ingress)
+UI --> AuthSvc : /api/v1/auth
+UI --> CampaignSvc : /api/v1/campaigns
+UI --> LeadSvc : /api/v1
 
 ' Service Dependencies
-AuthSvc --> DB : User Data\n& Sessions
+AuthSvc --> DB : User Data
 CampaignSvc --> DB : Campaign Data
-CampaignSvc --> MQ : Queue Email Jobs
-CampaignSvc --> LeadSvc : Fetch Leads
-
 LeadSvc --> DB : Lead Data
-LeadSvc --> MQ : AI Generation\nRequests
-LeadSvc --> AISvc : Lead Enrichment
-
-AISvc --> MQ : Process AI Jobs
 AISvc --> DB : AI Metadata
+
+' Messaging / Async
+CampaignSvc --> MQ : Queue Email Jobs
+LeadSvc --> MQ : Request Lead Gen
+AISvc <-- MQ : Process Lead Gen
+AISvc --> MQ : Return Results
+
+' Service-to-Service (REST)
+CampaignSvc --> LeadSvc : HTTP (Fetch Leads)
+
+' AI Integration
 AISvc --> OpenAI : Primary LLM
 AISvc --> Gemini : Fallback LLM
 
 ' Email Sending
-CampaignSvc --> Email : Send Emails
-AuthSvc --> Email : Verification\nEmails
+CampaignSvc --> Email : Send Marketing Emails
+AuthSvc --> Email : Send Verification Emails
 
-' Deployment
-K8s --> Harbor : Pull Images
+' Deployment Flow
+K8s <-- Harbor : Pull Images
+
+' Layout adjustments
 UI -[hidden]-> K8s
 AuthSvc -[hidden]-> K8s
-CampaignSvc -[hidden]-> K8s
-LeadSvc -[hidden]-> K8s
-AISvc -[hidden]-> K8s
 
 note right of AISvc
-  AI Service uses OpenAI as primary
-  with Gemini as fallback for
-  email generation and lead enrichment
+  Internal Service (Not Exposed)
+  Processes async jobs via RabbitMQ
+  Connects to LLMs
 end note
 
 note right of MQ
-  RabbitMQ handles async
-  communication between
-  services for AI jobs
-  and email queuing
-end note
-
-note bottom of DB
-  PostgreSQL stores:
-  - Users & Authentication
-  - Campaigns & Steps
-  - Leads & Batches
-  - Sent Emails & Events
-  - ICP Profiles
+  Decouples services:
+  1. Lead Gen Requests
+  2. Email Sending Jobs
+  3. Status Updates
 end note
 
 @enduml
