@@ -47,11 +47,19 @@ public class MatchController {
         return Map.of("status", "ok");
     }
     @PutMapping("/seller")
-    public SellerProfile putSeller(
+    public ResponseEntity<?> putSeller(
             @RequestBody SellerProfile s,
             @RequestHeader(value = "X-User-Email", required = false) String userEmail) {
-        Integer userId = userContextService.getUserIdFromEmail(userEmail);
-        return svc.setSeller(s, userId);
+        try {
+            Integer userId = userContextService.getUserIdFromEmail(userEmail);
+            SellerProfile saved = svc.setSeller(s, userId);
+            return ResponseEntity.ok(saved);
+        } catch (Exception e) {
+            System.err.println("=== ERROR setting seller profile: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("error", "Failed to save profile: " + e.getMessage()));
+        }
     }
     
     @GetMapping("/seller")
