@@ -739,7 +739,7 @@ export default function Campaigns() {
 
             {/* Step 2: Compose Email */}
             {currentStep === 2 && (
-              <div>
+              <div data-tour="campaign-step2">
                 <div className="flex justify-between items-center mb-4">
                   <h2 className="text-xl font-semibold text-gray-800">
                     {editingCampaignId ? "Edit Campaign" : "Create New Campaign"}
@@ -795,7 +795,7 @@ export default function Campaigns() {
 
             {/* Step 3: Campaign Settings */}
             {currentStep === 3 && (
-              <div className="bg-white rounded-lg shadow p-6">
+              <div className="bg-white rounded-lg shadow p-6" data-tour="campaign-settings">
                 <Step3CampaignSettings
                   campaignSettings={campaignSettings}
                   setCampaignSettings={setCampaignSettings}
@@ -805,7 +805,7 @@ export default function Campaigns() {
 
             {/* Step 4: Review */}
             {currentStep === 4 && (
-              <div className="bg-white rounded-lg shadow p-6">
+              <div className="bg-white rounded-lg shadow p-6" data-tour="campaign-review">
                 <Step4Review
                   campaignName={campaignName}
                   description={description}
@@ -822,7 +822,7 @@ export default function Campaigns() {
 
             {/* Step 5: Send */}
             {currentStep === 5 && (
-              <div className="bg-white rounded-lg shadow p-6">
+              <div className="bg-white rounded-lg shadow p-6" data-tour="campaign-send">
                 <Step5Send
                   campaignName={campaignName}
                   campaignId={editingCampaignId ? parseInt(editingCampaignId) : (selectedCampaign ? (parseInt(selectedCampaign.id) || null) : null)}
@@ -1217,6 +1217,7 @@ export default function Campaigns() {
           <button
             onClick={() => setShowCreateCampaign(true)}
             className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition whitespace-nowrap"
+            data-tour="create-campaign-btn"
           >
             <Mail size={18} />
             + Create Campaign

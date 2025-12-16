@@ -54,12 +54,12 @@ export default function Sidebar() {
           </h2>
 
           <nav className="space-y-2 flex-1">
-            <NavLink to="/" className={linkStyle}>
+            <NavLink to="/" className={linkStyle} data-tour="dashboard">
               <LayoutDashboard size={20} className="flex-shrink-0" />
               <span>Home</span>
             </NavLink>
 
-            <NavLink to="/leads" className={linkStyle}>
+            <NavLink to="/leads" className={linkStyle} data-tour="sidebar-leads">
               <Users size={20} className="flex-shrink-0" />
               <span>Your Future Clients</span>
             </NavLink>
@@ -97,7 +97,7 @@ export default function Sidebar() {
                       Mailboxes
                     </span>
                   </NavLink>
-                  <NavLink to="/campaigns" className={subLinkStyle}>
+                  <NavLink to="/campaigns" className={subLinkStyle} data-tour="sidebar-campaigns">
                     <Mail size={14} className="flex-shrink-0" />
                     <span className="transition-opacity duration-300 opacity-100">
                       Campaigns
@@ -107,7 +107,7 @@ export default function Sidebar() {
               )}
             </div>
 
-            <NavLink to="/settings" className={linkStyle}>
+            <NavLink to="/settings" className={linkStyle} data-tour="sidebar-settings">
               <Settings size={20} className="flex-shrink-0" />
               <span>Settings</span>
             </NavLink>

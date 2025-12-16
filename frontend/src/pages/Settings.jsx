@@ -1,10 +1,13 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { User, Mail, Building, Globe, Bell, Key, Save, Edit2, LogOut } from "lucide-react";
+import { User, Mail, Building, Globe, Bell, Key, Save, Edit2, LogOut, HelpCircle } from "lucide-react";
 import { authService } from "../services/authService";
+import { resetTour } from "../components/TourGuide";
+import { useTour } from "../contexts/TourContext";
 
 export default function Settings() {
   const navigate = useNavigate();
+  const { startTour } = useTour();
   const [isEditing, setIsEditing] = useState(false);
   const [profile, setProfile] = useState({
     name: "",
@@ -312,6 +315,36 @@ export default function Settings() {
               <label className="block text-sm font-medium text-gray-700 mb-2">Rate Limit</label>
               <p className="text-gray-900">{apiSettings.rateLimit}</p>
               <p className="text-xs text-gray-500 mt-1">Current rate limit for API requests</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Help & Support Section */}
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <h2 className="text-xl font-semibold text-gray-800 mb-4 flex items-center gap-2">
+            <HelpCircle size={24} />
+            Help & Support
+          </h2>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition">
+              <div>
+                <p className="font-medium text-gray-900">Take Product Tour</p>
+                <p className="text-sm text-gray-600">Replay the interactive tour to learn how to use all features</p>
+              </div>
+              <button
+                onClick={() => {
+                  resetTour();
+                  navigate('/');
+                  // Trigger tour after navigation to dashboard
+                  setTimeout(() => {
+                    window.dispatchEvent(new CustomEvent('triggerTour'));
+                  }, 500);
+                }}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition flex items-center gap-2"
+              >
+                <HelpCircle size={18} />
+                Start Tour
+              </button>
             </div>
           </div>
         </div>

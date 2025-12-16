@@ -540,7 +540,7 @@ export default function Leads() {
           </div>
         </div>
       )}
-    <div className={`p-6 bg-gray-50 min-h-screen transition-all duration-300 ${loading ? 'blur-sm' : ''}`}>
+    <div className={`p-6 bg-gray-50 min-h-screen transition-all duration-300 ${loading ? 'blur-sm' : ''}`} data-tour="leads-page">
       <div className="mb-6">
         <div className="flex justify-between items-start">
           <div>
@@ -1273,7 +1273,7 @@ export default function Leads() {
       </div>
 
       {/* Generate Leads Button */}
-      <div className="mb-6">
+      <div className="mb-6" data-tour="generate-leads-button">
         <button
           onClick={handleGenerateLeads}
           disabled={loading}
