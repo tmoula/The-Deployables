@@ -2,7 +2,11 @@
 
 An event-driven, microservices-based outreach platform that discovers prospects, generates personalized sequences with LLMs, and schedules multi-step email campaigns. Runs locally via Docker Compose and in production on GKE.
 
+## PlantUML Architecture
 <img width="1636" height="1075" alt="architecture diagram" src="https://github.com/user-attachments/assets/51384b85-eac2-4fa9-ab4f-017f9adc93ae" />
+
+## Database Schema
+<!-- Insert database picture here -->
 
 ---
 
@@ -46,10 +50,17 @@ docker-compose up --build -d
 3. Status changes (pause/resume) and connectivity tests hit `/api/v1/auth/mailboxes/{id}/status` and `/test`.  
 4. Inbox view uses `/api/v1/auth/inbox/all` and expects `X-User-Id` (frontend saves `userId` from login).
 
-### 4) Create & send a campaign (Campaign Service UI)
+### 4) Generate Leads (Lead Service UI)
+1. Go to **Leads** tab.
+2. Fill out **Company Profile** (your details) and **Prospect Criteria** (who you want to target).
+3. Click **Generate Leads** to use AI to find matching companies.
+4. Once leads appear, click **Download CSV**.
+5. You will use this CSV in the next step to create a campaign.
+
+### 5) Create & send a campaign (Campaign Service UI)
 Open **Campaigns** and click **+ Create Campaign**. The UI is a 5-step wizard:
 1. **Upload CSV (Step 1)**  
-   - Required: campaign name + CSV. Drag/drop or browse.  
+   - Required: campaign name + CSV. **Upload the CSV you downloaded from the Leads page.**
    - Calls `POST /campaigns/upload-csv` (multipart). Creates campaign + imports leads to Postgres.  
 2. **Compose Email (Step 2)**  
    - Write subject/body, manage variants and follow-ups.  
@@ -64,7 +75,7 @@ Open **Campaigns** and click **+ Create Campaign**. The UI is a 5-step wizard:
 
 While a campaign runs, the list view shows live progress (sent/queued/failed) and lets you start/pause/delete.
 
-### 5) Leads & Inbox views
+### 6) Leads & Inbox views
 - **Leads tab** lists imported leads (data from Campaign/Lead services).  
 - **Master Inbox** pulls recent emails from Auth Service’s EmailService (requires mailbox + user id).  
 - **Dashboard** provides the guided tour and entry points to other modules.
