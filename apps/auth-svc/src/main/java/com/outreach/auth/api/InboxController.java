@@ -26,7 +26,13 @@ public class InboxController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        List<EmailDto> emails = emailService.fetchRecentEmails(userId);
-        return ResponseEntity.ok(emails);
+        try {
+            List<EmailDto> emails = emailService.fetchRecentEmails(userId);
+            return ResponseEntity.ok(emails);
+        } catch (Exception e) {
+            System.err.println("Error fetching inbox for user " + userId + ": " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
     }
 }

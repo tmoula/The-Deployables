@@ -39,12 +39,18 @@ public class MailboxController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
         
-        List<MailboxResponse> mailboxes = mailboxService.getUserMailboxes(userId)
-            .stream()
-            .map(MailboxResponse::fromEntity)
-            .collect(Collectors.toList());
-        
-        return ResponseEntity.ok(mailboxes);
+        try {
+            List<MailboxResponse> mailboxes = mailboxService.getUserMailboxes(userId)
+                .stream()
+                .map(MailboxResponse::fromEntity)
+                .collect(Collectors.toList());
+            
+            return ResponseEntity.ok(mailboxes);
+        } catch (Exception e) {
+            System.err.println("Error fetching mailboxes for user " + userId + ": " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
     }
     
     /**
