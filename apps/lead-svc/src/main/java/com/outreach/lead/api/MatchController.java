@@ -66,7 +66,7 @@ public class MatchController {
     }
 
     @PostMapping("/match")
-    public ResponseEntity<LeadBatchResponse> match(
+    public ResponseEntity<?> match(
             @RequestBody(required=false) ProspectCriteria criteria,
             @RequestParam(defaultValue="5") int limit,
             @RequestHeader(value = "X-User-Email", required = false) String userEmail) {
@@ -83,7 +83,7 @@ public class MatchController {
             // Get seller profile (should be set via PUT /seller)
             SellerProfile seller = svc.getSeller();
             if (seller == null) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Seller profile not set. Please set seller profile first.");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Seller profile not set. Please set seller profile first.");
             }
             
             if (criteria == null) {
@@ -96,12 +96,12 @@ public class MatchController {
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {
             System.err.println("=== MATCH CONTROLLER ERROR: " + e.getMessage() + " ===");
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
         } catch (Exception e) {
             System.err.println("=== MATCH CONTROLLER ERROR ===");
             System.err.println("Error in match endpoint: " + e.getMessage());
             e.printStackTrace();
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to start lead generation: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Failed to start lead generation: " + e.getMessage());
         }
     }
     
