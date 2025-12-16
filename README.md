@@ -2,6 +2,7 @@
 
 An AI-powered microservices platform for B2B cold email outreach campaigns, featuring automated lead generation, intelligent email composition, and comprehensive campaign management.
 
+<img width="1636" height="1075" alt="image" src="https://github.com/user-attachments/assets/51384b85-eac2-4fa9-ab4f-017f9adc93ae" />
 
 
 ## 🏗 System Architecture
