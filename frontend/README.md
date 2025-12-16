@@ -1,67 +1,111 @@
-# 🤖 Outreach AI Frontend
+## Outreach Frontend
 
-A cloud-native React application providing the UI for the **AI B2B Cold Outreach Agent**.  
-This dashboard enables users to manage discovery, personalization, and automation of B2B outreach.
-
----
-
-## 📌 Purpose
-
-This service is the **frontend** for The Deployables’ Cloud Native SaaS project.  
-It provides:
-
-- A clean and intuitive dashboard UI
-- Navigation to core modules: Leads, Campaigns, Dashboard, Settings
-- Login screen for future authentication integration
-
-Backend APIs will connect later as microservices are developed.
+This directory contains the React‑based frontend for The Deployables B2B cold outreach platform. The application provides the web user interface for managing leads, campaigns, and configuration, and is designed to integrate with the underlying microservices and AI adapter.
 
 ---
 
-## ✅ Features
+## Purpose
 
-✔ React + Tailwind CSS  
-✔ Sidebar navigation with icons  
-✔ Multi-page routing (React Router)  
-✔ Dockerized for production builds  
-✔ Ready for Kubernetes deployment (future)  
+The frontend acts as the primary entry point for users of the platform. It is responsible for:
+
+- Presenting a clean, modern dashboard experience.
+- Providing navigation to core modules such as **Dashboard**, **Leads**, **Campaigns**, and **Settings**.
+- Hosting the authentication flows (login and related screens) as backend services mature.
+- Consuming REST APIs exposed by the backend microservices.
 
 ---
 
-## 🚀 Getting Started (Developer Mode)
+## Features
 
-### 1️⃣ Install dependencies
+- **React + Vite** development workflow.
+- **Tailwind CSS** for utility‑first styling.
+- **Client‑side routing** (for example, React Router) for multi‑page navigation.
+- **Responsive layout** with sidebar and topbar components.
+- **Dockerized** for production deployment behind Nginx.
 
+---
+
+## Getting Started (Local Development)
+
+### 1. Install dependencies
+
+```bash
 npm install
+```
 
-2️⃣ Start the local development server
+### 2. Start the development server
 
-npm start
+```bash
+npm run dev
+```
 
-Open in browser:
+By default, the application is available at:
+
+```text
+http://localhost:5173
+```
+
+The app supports hot module reloading for a fast development experience.
+
+---
+
+## Docker‑based Deployment
+
+The frontend is packaged using a multi‑stage Docker build (Node build stage → Nginx runtime stage).
+
+### 1. Build the Docker image
+
+```bash
+docker build -t outreach-frontend .
+```
+
+### 2. Run the container locally
+
+```bash
+docker run -p 3000:80 outreach-frontend
+```
+
+The UI is then reachable at:
+
+```text
 http://localhost:3000
+```
 
-The app hot-reloads automatically as you edit.
+This serves the optimized production build from Nginx.
 
-🐳 Docker: Production Deployment
+---
 
-This frontend is Dockerized using a multi-stage build (Node → NGINX).
+## Kubernetes Access (Cluster‑Hosted UI)
 
-1️⃣ Build Docker image
+### Option 1 – Port‑forward for local testing
 
-docker build -t outreach-ui .
+```bash
+kubectl port-forward svc/outreach-ui-service 3000:80 -n deps-lead-svc
+```
 
-2️⃣ Run container
+Access the UI at:
 
-docker run -p 3000:80 outreach-ui
-
-Open UI in browser:
+```text
 http://localhost:3000
+```
 
-This runs a compressed production build served by NGINX.
+### Option 2 – NodePort (depending on cluster configuration)
 
-📂 Project Structure
+```bash
+kubectl get nodes -o wide
+```
 
+Then open in a browser (replace with the appropriate node IP):
+
+```text
+http://<node-internal-ip>:30080
+```
+
+---
+
+## Project Structure
+
+```text
 frontend/
  ├─ src/
  │  ├─ components/
@@ -80,12 +124,12 @@ frontend/
  ├─ tailwind.config.js
  ├─ postcss.config.js
  └─ README.md
+```
 
-# Option 1: Port-forward for local testing
-kubectl port-forward svc/outreach-ui-service 3000:80
-# Access UI at: http://localhost:3000
+---
 
+## Environment Configuration
 
-# Option 2: NodePort (works on some environments)
-kubectl get nodes -o wide
-# Then: http://<node-internal-ip>:30080
+The frontend can be configured to point to different backend environments using environment variables (for example, `REACT_APP_AUTH_URL`, `REACT_APP_API_URL`) defined via your build pipeline or Kubernetes ConfigMaps.
+
+Ensure that these values are aligned with the corresponding backend services before deploying to shared environments.

@@ -72,13 +72,16 @@ cp .env.example .env
 
 ### Development
 
+From the `apps/AI-svc` directory:
+
 ```bash
-python ai-svc/main.py
+python -m src.main
 ```
 
-Or with uvicorn:
+Or, if you prefer using Uvicorn directly:
+
 ```bash
-uvicorn ai-svc.main:app --host 0.0.0.0 --port 8090 --reload
+uvicorn src.main:app --host 0.0.0.0 --port 8090 --reload
 ```
 
 ### Docker

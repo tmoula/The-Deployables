@@ -1,39 +1,19 @@
-# The Deployables - AI B2B Cold Outreach Platform
+## Overview
 
-An AI-powered microservices platform for B2B cold email outreach campaigns, featuring automated lead generation, intelligent email composition, and comprehensive campaign management.
-
-## 🛠 Debugging & Local Access (GKE)
-
-If you need to inspect the internal database or RabbitMQ queues while running on GKE, use these commands to forward the ports to your local machine.
-
-### 1. Connect to RabbitMQ Dashboard
-Open a terminal and run:
-```bash
-kubectl port-forward -n deps-lead-svc svc/rabbitmq 15672:15672
-```
-Then visit: [http://localhost:15672](http://localhost:15672) (User/Pass: `guest`/`guest`)
-
-### 2. Connect to Postgres Database
-Open a terminal and run:
-```bash
-kubectl port-forward -n deps-lead-svc svc/postgres-service 5432:5432
-```
-Then connect using any DB client (DBeaver, TablePlus):
-- **Host:** `localhost`
-- **Port:** `5432`
-- **User:** `postgres`
-- **Pass:** `postgres`
-- **Database:** `outreachdb`
-
-### 3. Verify Deployment & Images
-To check that your services are running and using the correct Harbor images, run:
-```bash
-kubectl get deployments -n deps-lead-svc -o custom-columns='NAME:.metadata.name,IMAGE:.spec.template.spec.containers[0].image'
-```
+The Deployables platform is an AI‑enabled, microservices‑based system for managing B2B cold outreach campaigns. It provides automated lead generation, AI‑assisted email composition, and end‑to‑end campaign orchestration. The system is fully containerized and deployed to Google Kubernetes Engine (GKE).
 
 ---
 
 ## System Architecture
+
+The platform consists of:
+
+- **Frontend**: A React‑based single‑page application.
+- **Microservices**: Java Spring Boot services for authentication, campaigns, and leads.
+- **AI Service**: A Python‑based adapter that integrates with external large language models (OpenAI and Google Gemini).
+- **Infrastructure**: Shared PostgreSQL and RabbitMQ instances, running inside Kubernetes.
+
+The following PlantUML diagram captures the high‑level architecture:
 
 ```plantuml
 @startuml
@@ -50,15 +30,12 @@ skinparam component {
     FontSize 12
 }
 
-' External User
 actor User
 
-' Frontend Layer
 package "Frontend Layer" {
     component "React UI\n(Port 5173)" as UI <<frontend>>
 }
 
-' API Gateway / Services Layer
 package "Microservices Layer" {
     component "Auth Service\n(Port 8083)" as AuthSvc <<service>>
     component "Campaign Service\n(Port 8081)" as CampaignSvc <<service>>
@@ -66,91 +43,79 @@ package "Microservices Layer" {
     component "AI Service\n(Port 8090)" as AISvc <<service>>
 }
 
-' Infrastructure Layer
 package "Infrastructure Layer" {
     database "PostgreSQL\n(Port 5432)" as DB <<infrastructure>>
     queue "RabbitMQ\n(Ports 5672, 15672)" as MQ <<infrastructure>>
 }
 
-' External Services
 package "External Services" {
     component "OpenAI API\n(GPT-4o-mini)" as OpenAI <<external>>
     component "Google Gemini API\n(Fallback)" as Gemini <<external>>
     component "Email Providers\n(Gmail, SMTP)" as Email <<external>>
 }
 
-' Deployment Platform
 cloud "Google Kubernetes Engine (GKE)" as GKE {
     component "Harbor Registry" as Harbor
     component "Kubernetes Cluster" as K8s
 }
 
-' User Interactions
 User --> UI : HTTPS
 
-' Frontend to Services
-UI --> AuthSvc : Authentication\n& User Management
-UI --> CampaignSvc : Campaign\nManagement
-UI --> LeadSvc : Lead\nManagement
+UI --> AuthSvc : Authentication\nand user management
+UI --> CampaignSvc : Campaign\nmanagement
+UI --> LeadSvc : Lead\nmanagement
 
-' Service Dependencies
-AuthSvc --> DB : User Data\n& Sessions
-CampaignSvc --> DB : Campaign Data
-CampaignSvc --> MQ : Queue Email Jobs
-CampaignSvc --> LeadSvc : Fetch Leads
+AuthSvc --> DB : User data\nand sessions
+CampaignSvc --> DB : Campaign data
+CampaignSvc --> MQ : Queue email jobs
+CampaignSvc --> LeadSvc : Fetch leads
 
-LeadSvc --> DB : Lead Data
-LeadSvc --> MQ : AI Generation\nRequests
-LeadSvc --> AISvc : Lead Enrichment
+LeadSvc --> DB : Lead data
+LeadSvc --> MQ : AI generation\nrequests
+LeadSvc --> AISvc : Lead enrichment
 
-AISvc --> MQ : Process AI Jobs
-AISvc --> DB : AI Metadata
+AISvc --> MQ : Process AI jobs
+AISvc --> DB : AI metadata
 AISvc --> OpenAI : Primary LLM
 AISvc --> Gemini : Fallback LLM
 
-' Email Sending
-CampaignSvc --> Email : Send Emails
-AuthSvc --> Email : Verification\nEmails
+CampaignSvc --> Email : Send emails
+AuthSvc --> Email : Verification emails
 
-' Deployment
-K8s --> Harbor : Pull Images
-UI -[hidden]-> K8s
-AuthSvc -[hidden]-> K8s
-CampaignSvc -[hidden]-> K8s
-LeadSvc -[hidden]-> K8s
-AISvc -[hidden]-> K8s
+K8s --> Harbor : Pull images
 
 note right of AISvc
-  AI Service uses OpenAI as primary
-  with Gemini as fallback for
-  email generation and lead enrichment
+  AI Service uses OpenAI as the primary
+  provider with Gemini as a fallback
+  for email generation and lead enrichment.
 end note
 
 note right of MQ
-  RabbitMQ handles async
-  communication between
-  services for AI jobs
-  and email queuing
+  RabbitMQ provides asynchronous
+  communication for AI jobs and
+  outbound email queuing.
 end note
 
 note bottom of DB
   PostgreSQL stores:
-  - Users & Authentication
-  - Campaigns & Steps
-  - Leads & Batches
-  - Sent Emails & Events
-  - ICP Profiles
+  - Users and authentication
+  - Campaigns and steps
+  - Leads and batches
+  - Sent emails and events
+  - ICP profiles
 end note
 
 @enduml
 ```
+
+---
 
 ## Technology Stack
 
 ### Frontend
 - **React** with Vite
 - **TailwindCSS** for styling
-- **Nginx** for production serving
+- **Nginx** for production hosting
 
 ### Backend Services
 - **Java Spring Boot** microservices
@@ -158,8 +123,8 @@ end note
 - **RabbitMQ** for asynchronous messaging
 
 ### AI Integration
-- **OpenAI GPT-4o-mini** (Primary)
-- **Google Gemini 2.5 Flash** (Fallback)
+- **OpenAI GPT‑4o‑mini** (primary provider)
+- **Google Gemini 2.5 Flash** (fallback provider)
 
 ### Infrastructure
 - **Docker** for containerization
@@ -167,7 +132,9 @@ end note
 - **Harbor** for container registry
 - **GitHub Actions** for CI/CD
 
-## Quick Start
+---
+
+## Quick Start (Local Development)
 
 ### Prerequisites
 - Docker and Docker Compose
@@ -175,44 +142,89 @@ end note
 - Node.js 18+
 - PostgreSQL 16
 
-### Local Development
+### 1. Clone the repository
 
-1. **Clone the repository**
 ```bash
 git clone <repository-url>
 cd The-Deployables
 ```
 
-2. **Set up environment variables**
+### 2. Configure environment variables
+
+Create an environment configuration (for example, `.env`) and provide the required secrets:
+
 ```bash
-# Create .env file with required secrets
-export OPENAI_API_KEY=your_key_here
-export GEMINI_API_KEY=your_key_here
-export JWT_SECRET=your_secret_here
+export OPENAI_API_KEY=your_openai_api_key
+export GEMINI_API_KEY=your_gemini_api_key
+export JWT_SECRET=your_jwt_secret
 ```
 
-3. **Start all services**
+### 3. Start local infrastructure and services
+
 ```bash
 cd infra
 docker-compose up --build
 ```
 
-4. **Initialize the database**
+### 4. Initialize the database schema
+
 ```bash
 psql -h localhost -U postgres -d outreachdb -f ../db/schema.sql
 ```
 
-5. **Access the application**
-- Frontend: http://localhost:5173
-- RabbitMQ Management: http://localhost:15672
-- Auth Service: http://localhost:8083
-- Campaign Service: http://localhost:8081
-- Lead Service: http://localhost:8084
-- AI Service: http://localhost:8090
+### 5. Access the application
+
+- Frontend: `http://localhost:5173`
+- RabbitMQ Management: `http://localhost:15672`
+- Auth Service: `http://localhost:8083`
+- Campaign Service: `http://localhost:8081`
+- Lead Service: `http://localhost:8084`
+- AI Service: `http://localhost:8090`
+
+---
+
+## Debugging and Local Access on GKE
+
+When the platform is running on GKE, you can inspect internal dependencies such as PostgreSQL and RabbitMQ by forwarding their ports to your local machine.
+
+### 1. Access the RabbitMQ management console
+
+```bash
+kubectl port-forward -n deps-lead-svc svc/rabbitmq 15672:15672
+```
+
+Then open `http://localhost:15672` in your browser.  
+Default credentials: `guest` / `guest`.
+
+### 2. Access the PostgreSQL database
+
+```bash
+kubectl port-forward -n deps-lead-svc svc/postgres-service 5432:5432
+```
+
+Then connect using a database client (for example, DBeaver or TablePlus) with the following settings:
+
+- **Host:** `localhost`
+- **Port:** `5432`
+- **User:** `postgres`
+- **Password:** `postgres`
+- **Database:** `outreachdb`
+
+### 3. Verify deployments and container images
+
+To confirm that services are running and using the expected Harbor images:
+
+```bash
+kubectl get deployments -n deps-lead-svc \
+  -o custom-columns='NAME:.metadata.name,IMAGE:.spec.template.spec.containers[0].image'
+```
+
+---
 
 ## Database Schema
 
-See [db/schema.sql](db/schema.sql) for the complete database schema including:
+The database schema is defined in `db/schema.sql` and includes tables for:
+
 - User management and authentication
 - Mailbox configuration
 - ICP (Ideal Customer Profile) targeting
@@ -220,76 +232,78 @@ See [db/schema.sql](db/schema.sql) for the complete database schema including:
 - Campaign management and sequences
 - Email sending and event tracking
 
+---
+
 ## CI/CD Pipeline
 
-The project uses GitHub Actions for automated build and deployment:
+The project uses GitHub Actions to build, test, and deploy the platform.
 
-### CI Workflow
-- **Trigger**: Push to `main` branch
-- **Actions**:
-  - Builds all Docker images (auth-svc, campaign-svc, lead-svc, ai-svc, frontend)
-  - Pushes images to Harbor registry: `harbor.javajon-gke.duckdns.org/library`
+### Continuous Integration (CI)
+- **Trigger**: Push to the `main` branch
+- **Steps**:
+  - Build Docker images for all services (`auth-svc`, `campaign-svc`, `lead-svc`, `ai-svc`, `frontend`)
+  - Push images to the Harbor registry: `harbor.javajon-gke.duckdns.org/library`
 
-### CD Workflow
-- **Trigger**: After successful CI workflow completion or manual dispatch
-- **Actions**:
-  - Connects to GKE cluster using kubeconfig
-  - Deploys Kubernetes manifests from `infra/k8s/`
-  - Updates deployment images to latest commit SHA
+### Continuous Deployment (CD)
+- **Trigger**: Successful CI pipeline or manual dispatch
+- **Steps**:
+  - Connect to the GKE cluster using a kubeconfig file
+  - Apply Kubernetes manifests from `infra/k8s/`
+  - Update deployment images to the latest commit SHA
 
-### Setting Up GitHub Secrets
+### Required GitHub Secrets
 
-1. **Create KUBECONFIG_B64 Secret**:
-   ```bash
-   # Base64 encode your GKE kubeconfig file
-   cat ~/.kube/gke-kubeconfig.yaml | base64 | pbcopy  # macOS
-   # or
-   cat ~/.kube/gke-kubeconfig.yaml | base64 -w 0      # Linux
-   ```
-   
-   Then in GitHub:
-   - Go to: Settings → Secrets and variables → Actions
-   - Click "New repository secret"
-   - Name: `KUBECONFIG_B64`
-   - Value: Paste the base64-encoded kubeconfig
+Configure the following repository secrets in GitHub:
 
-2. **Required Secrets**:
-   - `KUBECONFIG_B64`: Base64-encoded GKE kubeconfig file
-   - `HARBOR_USERNAME`: Harbor registry username
-   - `HARBOR_PASSWORD`: Harbor registry password
-   - `REACT_APP_AUTH_URL`: Frontend auth service URL (optional)
-   - `REACT_APP_API_URL`: Frontend API service URL (optional)
+- `KUBECONFIG_B64`: Base64‑encoded GKE kubeconfig file  
+- `HARBOR_USERNAME`: Harbor registry username  
+- `HARBOR_PASSWORD`: Harbor registry password  
+- `REACT_APP_AUTH_URL`: Frontend auth service URL (optional)  
+- `REACT_APP_API_URL`: Frontend API service URL (optional)
+
+To create `KUBECONFIG_B64`:
+
+```bash
+# Base64‑encode your GKE kubeconfig file
+cat ~/.kube/gke-kubeconfig.yaml | base64
+```
+
+Copy the output and store it as the value for `KUBECONFIG_B64` in GitHub Secrets.
+
+---
 
 ## Kubernetes Deployment
 
-### Quick Deploy (Local K8s)
+### Local Kubernetes (Docker Desktop)
 
-For teammates running this for the first time:
+For local cluster testing:
 
-1.  Make sure Docker Desktop is running and Kubernetes is enabled.
-2.  Run the automated setup script:
+1. Ensure Docker Desktop is running and Kubernetes is enabled.
+2. Execute the quickstart script:
 
-    ```bash
-    ./infra/k8s/quickstart.sh
-    ```
+   ```bash
+   ./infra/k8s/quickstart.sh
+   ```
 
-3.  Access the app at **[http://localhost](http://localhost)**.
+3. Access the UI at `http://localhost`.
 
 ### Production Deployment (GKE)
 
-Deployment to GKE is automated via GitHub Actions CD workflow. To deploy manually:
+Deployment to GKE is primarily handled by the GitHub Actions CD workflow. To deploy manually:
 
-1. **Verify you have kubeconfig configured**:
+1. **Verify cluster access**
+
    ```bash
    kubectl config current-context
    kubectl get nodes
    ```
 
-2. **Create namespace and apply ConfigMap/Secrets**:
+2. **Create namespace and apply configuration**
+
    ```bash
    kubectl apply -f infra/k8s/namespace.yaml
    kubectl apply -f infra/k8s/configmap.yaml
-   
+
    # Create Harbor image pull secret
    kubectl create secret docker-registry harbor-registry-secret \
      --docker-server=harbor.javajon-gke.duckdns.org \
@@ -298,7 +312,8 @@ Deployment to GKE is automated via GitHub Actions CD workflow. To deploy manuall
      --namespace=deps-lead-svc
    ```
 
-3. **Deploy services**:
+3. **Deploy core services**
+
    ```bash
    cd infra/k8s
    kubectl apply -f postgres-deploy-k8s.yaml -n deps-lead-svc
@@ -308,7 +323,8 @@ Deployment to GKE is automated via GitHub Actions CD workflow. To deploy manuall
    kubectl apply -f frontend-deploy-k8s.yaml -n deps-lead-svc
    ```
 
-4. **Update deployment images** (if deploying manually):
+4. **Update deployment images (if required)**
+
    ```bash
    # Replace <COMMIT_SHA> with your image tag
    kubectl set image deployment/auth-deployment \
@@ -316,77 +332,75 @@ Deployment to GKE is automated via GitHub Actions CD workflow. To deploy manuall
      -n deps-lead-svc
    ```
 
-5. **Verify deployment**:
+5. **Verify resources**
+
    ```bash
    kubectl get pods -n deps-lead-svc
    kubectl get deployments -n deps-lead-svc
    kubectl get svc -n deps-lead-svc
    ```
 
-**Note**: All environment variables are managed via ConfigMaps (non-sensitive) and Secrets (sensitive). No credentials are hardcoded in deployment files.
+All sensitive configuration is stored in Kubernetes Secrets, and non‑sensitive configuration is stored in ConfigMaps. No credentials are hard‑coded in the manifests.
+
+---
 
 ## Project Status
 
-
 ### Planned
-- ✅ Add the readme
-- ✅ Update readme with PlantUML diagram of system components
-- ⬜ Add to readme AI citation(s)
-- ✅ Update readme with this task list
-- ✅ Update readme database instructions
-- ✅ Figure out port-forward with Postgres on GKE to connect local code to DB
-- ✅ Figure out port-forward with RabbitMQ on GKE to connect local code to DB
-- ✅ Pushing images to Harbor on GKE
-- ✅ Secret for Harbor image container pulls
-- ✅ Add namespace(s) to GKE cluster
-- ✅ Deploy K8s manifests to GKE cluster
-- ✅ Integration test on GKE - ensuring emails are sent
-- ✅ Use GitHub Secrets and K8s Secrets - No secrets in the repo
-- ⬜ 80% unit test coverage
+- ⬜ Add AI‑specific citation(s) to this README
+- ⬜ Achieve at least 80% unit test coverage across core services
 
 ### In Progress
-- CI builds and pushes all container images to Harbor on GKE (EC)
-- Obtain data from a public API (EC)
-- CD pulls all container images from Harbor as well as all YAMLS on GKE (EC)
-- Bug with emails (TM)
-- - ⬜ 80% unit test coverage (EC)
-- Can't connect to Postgres using psql - why? (JJ)
+- ⬜ CI builds and pushes all container images to Harbor on GKE (EC)
+- ⬜ Obtain data from a public API and integrate it into outreach flows (EC)
+- ⬜ CD pulls all container images from Harbor as well as manifests on GKE (EC)
+- ⬜ Investigate and resolve email‑related issues (TM)
+- ⬜ Diagnose PostgreSQL connectivity issues via `psql` (JJ)
 
 ### Completed
-- ✅ Postgres engine install on GKE w/ instructions (JJ)
-- ✅ Basic services
-- ✅ Container image builds
-- ✅ Postgres hookups
-- ✅ RabbitMQ integration
-- ✅ AI integration
-- ✅ Use K8s ConfigMaps for non-secret environment variables
-- ✅ Add ingress to access user interface
-- ⬜ Secret for Harbor image container pulls
-- - ⬜ Figure out port-forward with Postgres on GKE to connect local code to DB (DS)
-- ⬜ Figure out port-forward with RabbitMQ on GKE to connect local code to DB (DS)
-- ⬜ Add namespace(s) to GKE cluster
-- - ⬜ Use GitHub Secrets and K8s Secrets - No secrets in the repo
-- ⬜ Deploy K8s manifests to GKE cluster
-  -  ⬜ Pushing images to Harbor on GKE
- -  
-### Maybe Later
-- Helm chart for deployment
+- ✅ Initial README and architectural documentation
+- ✅ PlantUML system architecture diagram
+- ✅ Database instructions and schema
+- ✅ Port‑forward configuration for PostgreSQL on GKE
+- ✅ Port‑forward configuration for RabbitMQ on GKE
+- ✅ Container image builds and push to Harbor on GKE
+- ✅ Harbor image pull secret configuration
+- ✅ Kubernetes namespaces for the cluster
+- ✅ Deployment of core Kubernetes manifests to GKE
+- ✅ Integration testing on GKE (email delivery)
+- ✅ Use of GitHub Secrets and Kubernetes Secrets (no secrets in the repository)
 
-## AI Citations
+### Future Enhancements
+- Helm chart‑based deployment
+
+---
+
+## AI Capabilities
 
 This project leverages the following AI technologies:
-- **OpenAI GPT-4o-mini**: Primary language model for email generation and content creation
-- **Google Gemini 2.5 Flash**: Fallback language model for high availability
+
+- **OpenAI GPT‑4o‑mini**: Primary language model for email generation and content creation.
+- **Google Gemini 2.5 Flash**: Fallback language model for high availability and resiliency.
+
+---
 
 ## Contributing
 
-This is a team project for The Deployables. Team members:
-- EC - CI/CD and external API integration
-- TM - Email functionality
-- JJ - Database and infrastructure
-- DS - System architecture and integration
+This is a team project for **The Deployables**.  
+Core contributors:
+
+- **EC** – CI/CD and external API integration  
+- **TM** – Email functionality  
+- **JJ** – Database and infrastructure  
+- **DS** – System architecture and integration  
+
+Please follow standard GitHub Flow (feature branches and pull requests) when contributing changes.
+
+---
 
 ## License
 
-[Add your license information here]
+License information has not yet been defined.  
+Before using this project in production, add an appropriate open‑source or commercial license (for example, MIT or Apache 2.0) to this section.
+
 
