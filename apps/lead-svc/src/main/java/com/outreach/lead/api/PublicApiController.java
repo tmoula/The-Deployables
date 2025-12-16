@@ -28,7 +28,7 @@ public class PublicApiController {
      */
     @GetMapping("/company")
     public ResponseEntity<Map<String, Object>> getCompanyData(
-            @RequestParam String domain) {
+            @RequestParam(required = false) String domain) {
         
         if (domain == null || domain.isEmpty()) {
             Map<String, Object> error = new HashMap<>();
@@ -57,7 +57,7 @@ public class PublicApiController {
      */
     @GetMapping("/contact")
     public ResponseEntity<Map<String, Object>> getContactData(
-            @RequestParam String domain,
+            @RequestParam(required = false) String domain,
             @RequestParam(required = false) String firstName,
             @RequestParam(required = false) String lastName) {
         
@@ -88,7 +88,7 @@ public class PublicApiController {
      */
     @GetMapping("/data")
     public ResponseEntity<Map<String, Object>> getData(
-            @RequestParam String endpoint,
+            @RequestParam(required = false) String endpoint,
             @RequestParam Map<String, String> queryParams) {
         
         if (endpoint == null || endpoint.isEmpty()) {

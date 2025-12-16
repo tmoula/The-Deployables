@@ -176,7 +176,7 @@ public class CampaignExecutionService {
                 // Don't delay after the last email
                 if (sentCount + failedCount < leads.size()) {
                     System.out.println("EXECUTE CAMPAIGN - Waiting " + delayMinutes + " minutes before next email...");
-                    Thread.sleep(delayMillis);
+                    sleep(delayMillis);
                 }
                 
             } catch (Exception e) {
@@ -187,14 +187,27 @@ public class CampaignExecutionService {
         }
         
         // Update campaign status
-        if (sentCount > 0) {
+        // If emails were sent OR no emails were sent but also no failures (meaning all were skipped/already sent),
+        // mark as completed. Only mark as failed if there were actual failures and no successes.
+        if (sentCount > 0 || failedCount == 0) {
             campaign.setStatus("completed");
             System.out.println("EXECUTE CAMPAIGN - Completed: " + sentCount + " sent, " + failedCount + " failed");
         } else {
             campaign.setStatus("failed");
-            System.err.println("EXECUTE CAMPAIGN - Failed: No emails sent");
+            System.err.println("EXECUTE CAMPAIGN - Failed: No emails sent and " + failedCount + " failed");
         }
         campaignRepository.save(campaign);
+    }
+    
+    /**
+     * Protected method to allow mocking of Thread.sleep in tests
+     */
+    protected void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
     
     /**

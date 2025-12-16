@@ -21,10 +21,11 @@ public class AiServiceClient {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public AiServiceClient(
-        @Value("${ai.service.url:http://ai-svc:8090}") String aiServiceUrl
+        @Value("${ai.service.url:http://ai-svc:8090}") String aiServiceUrl,
+        org.springframework.boot.web.client.RestTemplateBuilder restTemplateBuilder
     ) {
         this.aiServiceUrl = aiServiceUrl;
-        this.restTemplate = new RestTemplate();
+        this.restTemplate = restTemplateBuilder.build();
     }
 
     /**

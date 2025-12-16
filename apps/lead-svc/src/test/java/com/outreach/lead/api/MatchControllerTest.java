@@ -30,6 +30,15 @@ class MatchControllerTest {
 
     @MockBean
     private MatchService matchService;
+    
+    @MockBean
+    private com.outreach.lead.application.UserContextService userContextService;
+    
+    @MockBean
+    private com.outreach.lead.infrastructure.LeadBatchRepository leadBatchRepository;
+    
+    @MockBean
+    private com.outreach.lead.infrastructure.LeadRepository leadRepository;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -145,14 +154,15 @@ class MatchControllerTest {
         MatchService.ScoredProspect scoredProspect = new MatchService.ScoredProspect(testProspect, 75.5);
         List<MatchService.ScoredProspect> results = Arrays.asList(scoredProspect);
 
+        when(matchService.getSeller()).thenReturn(testSeller);
         when(matchService.match(any(ProspectCriteria.class), anyInt())).thenReturn(results);
+        when(matchService.startLeadGeneration(any(SellerProfile.class), any(ProspectCriteria.class), anyInt(), any()))
+            .thenReturn(new com.outreach.lead.api.DTO.LeadBatchResponse(1, "pending", "Batch created"));
 
         mockMvc.perform(post("/api/v1/match?limit=10")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(testCriteria)))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$[0].score").value(75.5))
-            .andExpect(jsonPath("$[0].prospect.company").value("Test Prospect"));
+            .andExpect(status().isOk());
     }
 
     @Test
@@ -160,7 +170,10 @@ class MatchControllerTest {
         MatchService.ScoredProspect scoredProspect = new MatchService.ScoredProspect(testProspect, 50.0);
         List<MatchService.ScoredProspect> results = Arrays.asList(scoredProspect);
 
+        when(matchService.getSeller()).thenReturn(testSeller);
         when(matchService.match(any(ProspectCriteria.class), anyInt())).thenReturn(results);
+        when(matchService.startLeadGeneration(any(SellerProfile.class), any(ProspectCriteria.class), anyInt(), any()))
+            .thenReturn(new com.outreach.lead.api.DTO.LeadBatchResponse(1, "pending", "Batch created"));
 
         mockMvc.perform(post("/api/v1/match")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -173,12 +186,111 @@ class MatchControllerTest {
         MatchService.ScoredProspect scoredProspect = new MatchService.ScoredProspect(testProspect, 60.0);
         List<MatchService.ScoredProspect> results = Arrays.asList(scoredProspect);
 
+        when(matchService.getSeller()).thenReturn(testSeller);
         when(matchService.match(any(ProspectCriteria.class), anyInt())).thenReturn(results);
+        when(matchService.startLeadGeneration(any(SellerProfile.class), any(ProspectCriteria.class), anyInt(), any()))
+            .thenReturn(new com.outreach.lead.api.DTO.LeadBatchResponse(1, "pending", "Batch created"));
 
         mockMvc.perform(post("/api/v1/match")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(testCriteria)))
             .andExpect(status().isOk());
+    }
+
+    @Test
+    void testRootEndpoint() throws Exception {
+        mockMvc.perform(get("/api/v1"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("ok"));
+    }
+
+    @Test
+    void testGetSeller() throws Exception {
+        when(matchService.getSeller()).thenReturn(testSeller);
+
+        mockMvc.perform(get("/api/v1/seller"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.companyName").value("Test Company"))
+            .andExpect(jsonPath("$.industry").value("Technology"));
+    }
+
+    @Test
+    void testGetSellerNotFound() throws Exception {
+        when(matchService.getSeller()).thenReturn(null);
+
+        mockMvc.perform(get("/api/v1/seller"))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void testGetBatchStatus() throws Exception {
+        com.outreach.lead.domain.entities.LeadBatchEntity batch = new com.outreach.lead.domain.entities.LeadBatchEntity();
+        batch.setId(1);
+        batch.setUserId(100);
+        batch.setIcpId(1);
+        batch.setSource("api");
+        batch.setStatus("ready");
+        batch.setRequestedLeadCount(5);
+        batch.setTotalLeads(10);
+
+        when(userContextService.getUserIdFromEmail(any())).thenReturn(100);
+        when(leadBatchRepository.findByIdAndUserId(1, 100)).thenReturn(java.util.Optional.of(batch));
+
+        mockMvc.perform(get("/api/v1/lead-batches/1"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(1))
+            .andExpect(jsonPath("$.status").value("ready"))
+            .andExpect(jsonPath("$.totalLeads").value(10));
+    }
+
+    @Test
+    void testGetBatchStatusNotFound() throws Exception {
+        when(userContextService.getUserIdFromEmail(any())).thenReturn(100);
+        when(leadBatchRepository.findByIdAndUserId(999, 100)).thenReturn(java.util.Optional.empty());
+
+        mockMvc.perform(get("/api/v1/lead-batches/999"))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void testGetBatchLeads() throws Exception {
+        com.outreach.lead.domain.entities.LeadBatchEntity batch = new com.outreach.lead.domain.entities.LeadBatchEntity();
+        batch.setId(1);
+        batch.setUserId(100);
+
+        com.outreach.lead.domain.entities.LeadEntity lead = new com.outreach.lead.domain.entities.LeadEntity();
+        lead.setId(1);
+        lead.setFirstName("John");
+        lead.setLastName("Doe");
+        lead.setJobTitle("CEO");
+        lead.setCompanyName("Test Company");
+        lead.setCompanyWebsite("test.com");
+        lead.setEmail("john@test.com");
+        lead.setCountry("US");
+
+        when(userContextService.getUserIdFromEmail(any())).thenReturn(100);
+        when(leadBatchRepository.findByIdAndUserId(1, 100)).thenReturn(java.util.Optional.of(batch));
+        when(leadRepository.findByUserIdAndBatchId(100, 1)).thenReturn(java.util.List.of(lead));
+
+        mockMvc.perform(get("/api/v1/lead-batches/1/leads"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].firstName").value("John"))
+            .andExpect(jsonPath("$[0].lastName").value("Doe"))
+            .andExpect(jsonPath("$[0].jobTitle").value("CEO"));
+    }
+
+    @Test
+    void testGenerateCsv() throws Exception {
+        MatchService.ScoredProspect scoredProspect = new MatchService.ScoredProspect(testProspect, 75.5);
+        List<MatchService.ScoredProspect> results = Arrays.asList(scoredProspect);
+
+        when(matchService.match(any(ProspectCriteria.class), anyInt())).thenReturn(results);
+
+        mockMvc.perform(post("/api/v1/generate-csv?limit=20")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(testCriteria)))
+            .andExpect(status().isOk())
+            .andExpect(header().string("Content-Disposition", "form-data; name=\"attachment\"; filename=\"prospects.csv\""));
     }
 }
 

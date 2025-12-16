@@ -86,7 +86,7 @@ public class EmailSendingService {
             message.setContent(body, "text/html; charset=utf-8");
             
             // Send message
-            Transport.send(message);
+            sendTransport(message);
             
             System.out.println("SENDING EMAIL - SUCCESS: Email sent to " + toEmail);
             return true;
@@ -96,6 +96,13 @@ public class EmailSendingService {
             e.printStackTrace();
             return false;
         }
+    }
+
+    /**
+     * Protected method to allow mocking of Transport.send in tests
+     */
+    protected void sendTransport(MimeMessage message) throws MessagingException {
+        Transport.send(message);
     }
     
     /**
