@@ -124,15 +124,13 @@ We use GitHub Actions for CI/CD:
 For detailed deployment info and troubleshooting, see [TEST_CI_CD.md](TEST_CI_CD.md).
 
 ## 👥 Team
-- **EC** - CI/CD & External API
-- **TM** - Email Functionality
-- **JJ** - Database & Infra
-- **DS** - System Architecture
+- Taha Moula
+- Daniel Simon
+- Edouard Carpe
 
 
 
 ## AI Citations
 
 This project leverages the following AI technologies:
-- **OpenAI GPT-4o-mini**: Primary language model for email generation and content creation
-- **Google Gemini 2.5 Flash**: Fallback language model for high availability
+- **Gemini 3 Pro**: Primary language model for email generation and content creation
