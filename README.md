@@ -6,7 +6,7 @@ An event-driven, microservices-based outreach platform that discovers prospects,
 <img width="1636" height="1075" alt="architecture diagram" src="https://github.com/user-attachments/assets/51384b85-eac2-4fa9-ab4f-017f9adc93ae" />
 
 ## Database Schema
-<!-- Insert database picture here -->
+![WhatsApp Image 2025-12-16 at 09 28 15](https://github.com/user-attachments/assets/5ebb39b5-d7b3-42cd-a905-22c90c05cfe5)
 
 ---
 
