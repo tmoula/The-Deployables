@@ -40,9 +40,15 @@ export const api = {
   // Seller Profile (lead service)
   async setSeller(sellerData) {
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      const userEmail = this.getUserEmail();
+      if (userEmail) {
+        headers['X-User-Email'] = userEmail;
+      }
+
       const response = await fetch(`${LEAD_BASE_URL}/seller`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: headers,
         body: JSON.stringify(sellerData)
       });
       if (!response.ok) {
@@ -61,9 +67,15 @@ export const api = {
   // Get Seller Profile (lead service)
   async getSeller() {
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      const userEmail = this.getUserEmail();
+      if (userEmail) {
+        headers['X-User-Email'] = userEmail;
+      }
+
       const response = await fetch(`${LEAD_BASE_URL}/seller`, {
         method: 'GET',
-        headers: { 'Content-Type': 'application/json' }
+        headers: headers
       });
       if (!response.ok) {
         if (response.status === 404) {
