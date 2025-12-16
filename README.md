@@ -166,7 +166,6 @@ CI/CD (GitHub Actions):
 ---
 
 ## Known Issues / Troubles We’re Having
-- **Queue name mismatch (AI vs Lead)**: Lead Service publishes to `ai.leads.generation.requests` while AI Service listens on `ai.email.generation.requests`; result: lead-enrichment jobs sit in a queue the AI adapter never reads, so company discovery/personalization via AI will stall. **Fix:** align both services to the same queue name (recommended: point Lead to `ai.email.generation.requests`) or add a consumer/alias for `ai.leads.generation.requests`.  
 - **Port confusion (Campaign Service)**: Code/config use port 8081, but `apps/campaign-svc/README.md` claims 8082 and `lead.service.url` default points to `lead-svc:8081`. Verify and standardize ports before deployment.  
 - **Auth mailbox/inbox relies on `X-User-Id`**: Without a gateway that injects user id from JWT, mailbox/inbox calls need the header; ensure frontend login stores `userId` and sends it.  
 - **Partial backend wiring in UI**: Frontend assumes campaign/lead/auth services are reachable; if not, the campaign wizard will fail at upload/preview/schedule and inbox will be empty.  
