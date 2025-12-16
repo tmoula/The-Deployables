@@ -47,11 +47,17 @@ public class MatchController {
         return Map.of("status", "ok");
     }
     @PutMapping("/seller")
-    public SellerProfile putSeller(@RequestBody SellerProfile s){ return svc.setSeller(s); }
+    public SellerProfile putSeller(
+            @RequestBody SellerProfile s,
+            @RequestHeader(value = "X-User-Email", required = false) String userEmail) {
+        Integer userId = userContextService.getUserIdFromEmail(userEmail);
+        return svc.setSeller(s, userId);
+    }
     
     @GetMapping("/seller")
-    public ResponseEntity<SellerProfile> getSeller() {
-        SellerProfile seller = svc.getSeller();
+    public ResponseEntity<SellerProfile> getSeller(@RequestHeader(value = "X-User-Email", required = false) String userEmail) {
+        Integer userId = userContextService.getUserIdFromEmail(userEmail);
+        SellerProfile seller = svc.getSeller(userId);
         if (seller == null) {
             return ResponseEntity.notFound().build();
         }
@@ -81,7 +87,7 @@ public class MatchController {
             System.out.println("Resolved user_id: " + userId);
             
             // Get seller profile (should be set via PUT /seller)
-            SellerProfile seller = svc.getSeller();
+            SellerProfile seller = svc.getSeller(userId);
             if (seller == null) {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Seller profile not set. Please set seller profile first.");
             }

@@ -6,6 +6,8 @@ import com.outreach.lead.domain.ProspectCriteria;
 import com.outreach.lead.domain.SellerProfile;
 import com.outreach.lead.domain.entities.*;
 import com.outreach.lead.infrastructure.*;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,13 +18,14 @@ import java.util.Optional;
 
 @Service
 public class MatchService {
-    private SellerProfile seller;                       // set via PUT /seller (in-memory for backward compatibility)
+    // private SellerProfile seller; // REMOVED: Now stateless, stored in DB
     private final ProspectService prospectService;
     private final SenderCompanyRepository senderCompanyRepository;
     private final ICPProfileRepository icpProfileRepository;
     private final LeadBatchRepository leadBatchRepository;
     private final RabbitMQClient rabbitMQClient;
     private final UserContextService userContextService;
+    private final ObjectMapper objectMapper;
     
     public MatchService(
         ProspectService prospectService,
@@ -30,7 +33,8 @@ public class MatchService {
         ICPProfileRepository icpProfileRepository,
         LeadBatchRepository leadBatchRepository,
         RabbitMQClient rabbitMQClient,
-        UserContextService userContextService
+        UserContextService userContextService,
+        ObjectMapper objectMapper
     ) {
         this.prospectService = prospectService;
         this.senderCompanyRepository = senderCompanyRepository;
@@ -38,12 +42,57 @@ public class MatchService {
         this.leadBatchRepository = leadBatchRepository;
         this.rabbitMQClient = rabbitMQClient;
         this.userContextService = userContextService;
+        this.objectMapper = objectMapper;
     }
     
 
-    // 1) Save & get seller (in-memory for backward compatibility)
-    public SellerProfile getSeller(){ return seller; }
-    public SellerProfile setSeller(SellerProfile s){ this.seller = s; return s; }
+
+
+    // 1) Save & get seller (Stateless - stored in DB description field)
+    public SellerProfile getSeller(Integer userId) { 
+        if (userId == null) return null;
+        return senderCompanyRepository.findByUserId(userId)
+            .map(entity -> {
+                String potentialJson = entity.getDescription();
+                if (potentialJson == null || potentialJson.isEmpty()) return null;
+                
+                // Try to parse as JSON first
+                try {
+                    return objectMapper.readValue(potentialJson, SellerProfile.class);
+                } catch (JsonProcessingException e) {
+                    // Not JSON - treat as legacy text description
+                    // We can construct a partial profile or just return null
+                    // For now, let's treat it as null so user re-saves the full profile
+                    System.err.println("Description is not valid JSON profile (likely legacy text): " + e.getMessage());
+                    return null;
+                }
+            })
+            .orElse(null);
+    }
+
+    public SellerProfile setSeller(SellerProfile s, Integer userId) {
+        if (userId == null) throw new IllegalArgumentException("User ID required to set seller profile");
+        
+        try {
+            // Serialize full profile to JSON
+            String json = objectMapper.writeValueAsString(s);
+            
+            SenderCompanyEntity entity = senderCompanyRepository.findByUserId(userId)
+                .orElse(new SenderCompanyEntity());
+            
+            entity.setUserId(userId);
+            entity.setName(s.companyName());
+            entity.setIndustry(s.industry());
+            
+            // MAGIC: Store the JSON in the description field (TEXT column)
+            entity.setDescription(json);
+            
+            senderCompanyRepository.save(entity);
+            return s;
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Failed to serialize seller profile", e);
+        }
+    }
 
     // 2) DB listing/adding (admin/debug; UI won't input names)
     public List<Prospect> listProspects(){ 
