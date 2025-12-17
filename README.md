@@ -158,6 +158,15 @@ CI/CD (GitHub Actions):
 
 ---
 
+## RabbitMQ Management
+This is how you access rabbitmq in production:
+```bash
+kubectl port-forward svc/rabbitmq 15672:15672 -n deps-lead-svc
+```
+Then visit http://localhost:15672
+
+---
+
 ## Known Issues / Troubles We’re Having 
 - **Port confusion (Campaign Service)**: Code/config use port 8081, but `apps/campaign-svc/README.md` claims 8082 and `lead.service.url` default points to `lead-svc:8081`. Verify and standardize ports before deployment.  
 - **Auth mailbox/inbox relies on `X-User-Id`**: Without a gateway that injects user id from JWT, mailbox/inbox calls need the header; ensure frontend login stores `userId` and sends it.  
