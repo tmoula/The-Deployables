@@ -6,9 +6,8 @@ Before testing, ensure these secrets are configured in GitHub:
 
 1. **HARBOR_USERNAME** - `robot$library+developer`
 2. **HARBOR_PASSWORD** - `c5d9eRvmIQlOiZCagsKZp4XAi3qwRAba`
-3. **GCP_SA_KEY** - Google Cloud Service Account JSON key (for CD deployment)
-4. **REACT_APP_AUTH_URL** (optional) - Auth service URL
-5. **REACT_APP_API_URL** (optional) - API service URL
+3. **REACT_APP_AUTH_URL** (optional) - Auth service URL
+4. **REACT_APP_API_URL** (optional) - API service URL
 
 ## How to Test
 
