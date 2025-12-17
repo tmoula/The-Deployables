@@ -27,17 +27,10 @@ An event-driven, microservices-based outreach platform that discovers prospects,
 
 ## End-to-End User Guide (What to click)
 
-### 1) Start the stack locally
-```bash
-cd infra
-docker-compose up --build -d
-```
-- Frontend: http://localhost:5173  
-- Auth API: http://localhost:8083/api/v1/auth  
-- Campaign API: http://localhost:8081/api/v1 (frontend defaults here)  
-- Lead API: http://localhost:8084/api/v1  
-- RabbitMQ UI: http://localhost:15672 (guest/guest)  
-- Postgres: localhost:5432 (`postgres` / `postgres`, db `outreachdb`)
+### 1) Access the Application
+Go to our production deployment: **[https://javajon-gke.duckdns.org](https://javajon-gke.duckdns.org)**
+
+*(Alternatively, to run locally: `cd infra && docker-compose up --build -d` and visit http://localhost:5173)*
 
 ### 2) Register & log in (Frontend)
 1. Go to **Register** → create an account (email/password).  
@@ -165,12 +158,13 @@ CI/CD (GitHub Actions):
 
 ---
 
-## Known Issues / Troubles We’re Having
+## Known Issues / Troubles We’re Having 
 - **Port confusion (Campaign Service)**: Code/config use port 8081, but `apps/campaign-svc/README.md` claims 8082 and `lead.service.url` default points to `lead-svc:8081`. Verify and standardize ports before deployment.  
 - **Auth mailbox/inbox relies on `X-User-Id`**: Without a gateway that injects user id from JWT, mailbox/inbox calls need the header; ensure frontend login stores `userId` and sends it.  
 - **Partial backend wiring in UI**: Frontend assumes campaign/lead/auth services are reachable; if not, the campaign wizard will fail at upload/preview/schedule and inbox will be empty.  
 - **Secrets & SMTP**: Mail sending requires valid Gmail app password (`MAIL_USERNAME`/`MAIL_PASSWORD`) in secrets; missing or wrong values break mailbox tests.  
 - **OpenAI/Gemini keys required**: AI service needs `OPENAI_API_KEY` (and optional `GEMINI_API_KEY`) set in env/secrets; otherwise generation falls back or fails.
+- **Test Coverage**: Unfortunately, JaCoCo test coverage did not fully reach the 80% target across all services.
 
 ---
 
