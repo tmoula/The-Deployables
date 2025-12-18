@@ -829,7 +829,7 @@ kubectl logs -n deps-lead-svc deployment/lead-deployment --tail=100
 
 ---
 
-**Last Updated**: December 2024  
+**Last Updated**: December 2025
 **Project**: The Deployables - AI B2B Cold Outreach Platform  
 **Team**: Taha Moula, Daniel Simon, Edouard Carpe
 
